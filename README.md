@@ -1,23 +1,23 @@
-## DeepPacket
+# DeepPacket
 - A C++ Network Packet Parser with Validation for Network Protocols
 
 
-# Overview
+## Overview
 - DeepPacket is a modular zero-copy C++ engine for parsing  raw network packets
 - Inspired by Wireshark and aim to creaate a similar packet inspection tool
 
-# Features
+## Features
 
-Current Features
+### Current Features
 - Simulated Network Packets for Parsing
 - Completed minimal parser layer
 
-Planned Features:
+### Planned Features:
 - Packet validation pipeline
 - Raw Packet capture to replace simulated static packets
 - Possible imgui addition if all goes well
 
-# Build
+## Build
 - This Project uses CMake
 - Run the following to run the project:
     - Navigate to project-root folder
