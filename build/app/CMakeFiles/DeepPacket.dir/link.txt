@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/DeepPacket.dir/src/main.cpp.o -o DeepPacket  ../parser/libparser.a ../validation/libvalidation.a ../capture/libcapture.a ../parser/libparser.a 
