@@ -1,6 +1,6 @@
-# DeepPacket
+# DeepPacket 
 - A C++ Network Packet Parser with Validation for Network Protocols
-
+- STATUS: WIP
 
 ## Overview
 - DeepPacket is a modular zero-copy C++ engine for parsing  raw network packets

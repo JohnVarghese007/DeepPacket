@@ -4,63 +4,136 @@
 #include <iomanip>
 #include <arpa/inet.h>
 
-// PacketView Constructor
-PacketView::PacketView(const uint8_t* packet) {
-    eth_layer = new EthernetLayer(packet);
-    ip_layer = new IPv4Layer(packet + eth_layer->header_size());
-    size_t ip_header_size = ip_layer->header_size();
-    const uint8_t* l4_start = packet + eth_layer->header_size() + ip_header_size;
+#define TCP_PROTOCOL_VALUE 6
+#define UDP_PROTOCOL_VALUE 17
+#define IPv4_ETHERTYPE 0x0800
+#define MINIMUM_TCP_HEADER_SIZE 20
+#define MINIMUM_UDP_HEADER_SIZE 8
 
-    // Determine Layer 4 Protocol based on Ipv4 protocol field (TCP=6, UDP=17)
-    if(ip_layer->iph->protocol == 6) {
-        tcp_layer = new TCPLayer(l4_start);
-        udp_layer = nullptr;
-        l4_type = L4Type::TCP;
-        size_t tcp_header_size = tcp_layer->header_size();
-        payload = l4_start + tcp_header_size;
-        payload_len = ntohs(ip_layer->iph->total_length) - ip_header_size - tcp_header_size;
+/*
+    PacketView Class Implementation
+    - This class provides a structural view of a raw network packet
+    - parses raw byte buffer into supported protocol layers (Ethernet, IPv4, TCP, UDP)
+    - Does not handle validation -> that is to be done separately by the validation module
+*/
+
+// PacketView Constructor
+PacketView::PacketView(const uint8_t* packet, size_t length) :
+    data(packet), length(length), 
+    has_eth(false), has_ip(false), has_tcp(false), has_udp(false),
+    payload(nullptr), payload_len(0), l4_type(L4Type::UNKNOWN)
+{
+    parse_layers();
+}
+
+// Parse Layers
+void PacketView::parse_layers() {
+
+    // Ethernet Layer
+    if (length < sizeof(EthernetHeader)) {
+        return; 
     }
-    else if(ip_layer->iph->protocol == 17) {
-        udp_layer = new UDPLayer(l4_start);
-        tcp_layer = nullptr;
+    eth_layer = EthernetLayer(data);
+    has_eth = true;
+
+    // EtherType check for IPv4
+    uint16_t ethertype = ntohs(eth_layer.eth->ether_type);
+    if (ethertype != IPv4_ETHERTYPE) {
+        return; 
+    }
+
+    // IPv4 Layer
+    size_t ip_offset = sizeof(EthernetHeader);
+    if (length < ip_offset + sizeof(IPv4Header)) {
+        return;
+    }
+    ip_layer = IPv4Layer(data + ip_offset);
+    has_ip = true;
+
+    // Looking at ihl bits to determine IPv4 header size
+    size_t ihl = (ip_layer.iph->version_ihl & 0x0F) * 4;
+    if(ihl < 20 || length < ip_offset + ihl){
+        return;
+    }
+
+    // Adding ihl to ip_offset to point to L4 header
+    size_t l4_offset = ip_offset + ihl;    
+
+    // Determining Layer 4 Protocol
+    if(ip_layer.iph->protocol == TCP_PROTOCOL_VALUE) {
+        if(length < l4_offset + sizeof(TCPHeader)) {
+            return;
+        }
+        tcp_layer = TCPLayer(data + l4_offset);
+        has_tcp = true;
+
+        size_t tcp_header_size = tcp_layer.header_size();
+        if(tcp_header_size < MINIMUM_TCP_HEADER_SIZE || length < l4_offset + tcp_header_size) {
+            return;        
+        }
+        payload = data + l4_offset + tcp_header_size;
+        payload_len = length - (l4_offset + tcp_header_size);
+        l4_type = L4Type::TCP;
+        return;
+    }
+    else if(ip_layer.iph->protocol == UDP_PROTOCOL_VALUE) {
+        if(length < l4_offset + sizeof(UDPHeader)) {
+            return;
+        }
+        udp_layer = UDPLayer(data + l4_offset);
+        has_udp = true;
+
+        size_t udp_header_size = udp_layer.header_size();
+        if(udp_header_size < MINIMUM_UDP_HEADER_SIZE || length < l4_offset + udp_header_size) {
+            return;        
+        }
+        payload = data + l4_offset + udp_header_size;
+        payload_len = length - (l4_offset + udp_header_size);
         l4_type = L4Type::UDP;
-        payload = l4_start + udp_layer->header_size();
-        payload_len = ntohs(udp_layer->udph->length) - udp_layer->header_size();
+        return;
     }
     else {
-        tcp_layer = nullptr;
-        udp_layer = nullptr;
-        l4_type = L4Type::UNKNOWN;
+        // Unsupported L4 Protocol
+        has_tcp = false;
+        has_udp = false;
         payload = nullptr;
         payload_len = 0;
+        l4_type = L4Type::UNKNOWN;
     }
-}
+   
+}   
 
-// PacketView Destructor
-PacketView::~PacketView() {
-    delete eth_layer;
-    delete ip_layer;
-    delete tcp_layer;
-    delete udp_layer;
-}
-
-// Print Packet Details
+// Print Packet View Details
 void PacketView::print() const {
-    std::cout << "=========== PACKET VIEW ============="  << std::endl;
-        eth_layer->print();
-        ip_layer->print();
-        if(l4_type == L4Type::TCP) {
-            tcp_layer->print();
-        }
-        else if(l4_type == L4Type::UDP) {
-            udp_layer->print();
-        }
-        else {
-            std::cout << "=== Unsupported L4 Protocol ===" << std::endl;
+    std::cout << "=========== PACKET VIEW =============\n";
 
-        }
-        std::cout << "Payload Length: " << payload_len << " bytes" << std::endl;
-        std::cout << "=====================================" << std::endl;
+    if(has_eth) {
+        eth_layer.print();
+    }
+    else { 
+        std::cout << "Ethernet: <invalid>" << std::endl; 
+        return; 
+    }
+
+    if(has_ip) {
+        ip_layer.print();
+    } 
+    else { 
+        std::cout << "IPv4: <invalid>" << std::endl;
+        return; 
+    }
+
+    if(has_tcp) {
+        tcp_layer.print();
+    }
+    else if(has_udp) {
+        udp_layer.print();
+    }
+    else {
+        std::cout << "Transport: <unsupported>" << std::endl;
+    } 
+
+    std::cout << "Payload Length: " << payload_len << " bytes" << std::endl;
+    std::cout << "=====================================" << std::endl;
 }
-
 

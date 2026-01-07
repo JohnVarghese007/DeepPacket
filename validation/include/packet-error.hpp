@@ -1,6 +1,6 @@
 #pragma once
 
-enum class PacketError {
+enum class ValidationError {
     NONE,
     TOO_SMALL_FOR_ETHERNET,
     TOO_SMALL_FOR_IPV4,

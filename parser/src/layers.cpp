@@ -5,6 +5,15 @@
 #include <sstream>
 #include <arpa/inet.h>
 
+// TCP FLAG OFFSETS
+#define FIN_FLAG 0x01
+#define SYN_FLAG 0x02
+#define RST_FLAG 0x04
+#define PSH_FLAG 0x08
+#define ACK_FLAG 0x10
+#define URG_FLAG 0x20
+#define ECE_FLAG 0x40
+#define CWR_FLAG 0x80
 
 // LAYER 2 -> Ethernet Layer
 
@@ -93,14 +102,14 @@ std::vector<std::string> TCPLayer::decode_tcp_flags(uint8_t flags) {
 
     std::vector<std::string> result;
 
-    bool fin = flags & 0x01;
-    bool syn = flags & 0x02;
-    bool rst = flags & 0x04;
-    bool psh = flags & 0x08;
-    bool ack = flags & 0x10;
-    bool urg = flags & 0x20;
-    bool ece = flags & 0x40;
-    bool cwr = flags & 0x80;
+    bool fin = flags & FIN_FLAG;
+    bool syn = flags & SYN_FLAG;
+    bool rst = flags & RST_FLAG;
+    bool psh = flags & PSH_FLAG;
+    bool ack = flags & ACK_FLAG;
+    bool urg = flags & URG_FLAG;
+    bool ece = flags & ECE_FLAG;
+    bool cwr = flags & CWR_FLAG;
 
     if(fin) result.push_back("FIN");
     if(syn) result.push_back("SYN");

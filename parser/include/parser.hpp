@@ -3,12 +3,13 @@
 #include <cstdint>
 #include "packet_view.hpp"
 
-class ParsedPacket {
+struct ParsedPacket {
 public:
+    std::span<const uint8_t> buffer;
     PacketView view;
 
-    ParsedPacket(const uint8_t* data)
-        : view(data) {}
+    ParsedPacket(std::span<const uint8_t> buf)
+        : buffer(buf), view(buf.data(), buf.size()) {}
 };
 
 // Main parser API.
