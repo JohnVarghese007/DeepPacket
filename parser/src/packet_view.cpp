@@ -44,7 +44,7 @@ void PacketView::parse_layers() {
 
     // IPv4 Layer
     size_t ip_offset = sizeof(EthernetHeader);
-    if (length < ip_offset + sizeof(IPv4Header)) {
+    if (length < ip_offset + 1) {
         return;
     }
     ip_layer = IPv4Layer(data + ip_offset);
@@ -52,52 +52,35 @@ void PacketView::parse_layers() {
 
     // Looking at ihl bits to determine IPv4 header size
     size_t ihl = (ip_layer.iph->version_ihl & 0x0F) * 4;
-    if(ihl < 20 || length < ip_offset + ihl){
-        return;
-    }
 
     // Adding ihl to ip_offset to point to L4 header
     size_t l4_offset = ip_offset + ihl;    
 
     // Determining Layer 4 Protocol
     if(ip_layer.iph->protocol == TCP_PROTOCOL_VALUE) {
-        if(length < l4_offset + sizeof(TCPHeader)) {
+        l4_type = L4Type::TCP;
+        if (length < l4_offset + 1) {
             return;
         }
         tcp_layer = TCPLayer(data + l4_offset);
         has_tcp = true;
-
-        size_t tcp_header_size = tcp_layer.header_size();
-        if(tcp_header_size < MINIMUM_TCP_HEADER_SIZE || length < l4_offset + tcp_header_size) {
-            return;        
-        }
-        payload = data + l4_offset + tcp_header_size;
-        payload_len = length - (l4_offset + tcp_header_size);
-        l4_type = L4Type::TCP;
+        payload = (l4_offset < length) ? data + l4_offset : nullptr;
+        payload_len = (l4_offset < length) ? (length - l4_offset) : 0;        
         return;
     }
     else if(ip_layer.iph->protocol == UDP_PROTOCOL_VALUE) {
-        if(length < l4_offset + sizeof(UDPHeader)) {
+        l4_type = L4Type::UDP;
+        if (length < l4_offset + 1) {
             return;
         }
         udp_layer = UDPLayer(data + l4_offset);
         has_udp = true;
-
-        size_t udp_header_size = udp_layer.header_size();
-        if(udp_header_size < MINIMUM_UDP_HEADER_SIZE || length < l4_offset + udp_header_size) {
-            return;        
-        }
-        payload = data + l4_offset + udp_header_size;
-        payload_len = length - (l4_offset + udp_header_size);
-        l4_type = L4Type::UDP;
+        payload = (l4_offset < length) ? data + l4_offset : nullptr;
+        payload_len = (l4_offset < length) ? (length - l4_offset) : 0;
         return;
     }
     else {
         // Unsupported L4 Protocol
-        has_tcp = false;
-        has_udp = false;
-        payload = nullptr;
-        payload_len = 0;
         l4_type = L4Type::UNKNOWN;
     }
    
