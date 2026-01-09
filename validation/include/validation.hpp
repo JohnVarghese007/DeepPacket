@@ -13,10 +13,8 @@ public:
     {
         validate_packet();
     }
-
     
     void validate_packet();
-
     void print_errors() const;
     void print_raw_packet_bytes() const; 
 
@@ -25,8 +23,7 @@ private:
     static bool validate_ethernet(const PacketView& view, ValidationError& error);
     static bool validate_ipv4(const PacketView& view, ValidationError& error);
     static bool validate_tcp(const PacketView& view, ValidationError& error);
-    static bool validate_udp(const PacketView& view, ValidationError& error);
-    
+    static bool validate_udp(const PacketView& view, ValidationError& error);    
 
 };
 

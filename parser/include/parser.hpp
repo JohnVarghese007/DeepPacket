@@ -12,5 +12,5 @@ public:
         : buffer(buf), view(buf.data(), buf.size()) {}
 };
 
-// Main parser API.
+// Main parser API 
 ParsedPacket parse_packet(std::span<const uint8_t> buffer);

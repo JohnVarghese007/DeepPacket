@@ -1,5 +1,4 @@
 #include "layers.hpp"
-
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -15,8 +14,17 @@
 #define ECE_FLAG 0x40
 #define CWR_FLAG 0x80
 
-// LAYER 2 -> Ethernet Layer
+/*
+    Network Layers Implementation
+    - This file constains implementations of the following classes:
+        - EthernetLayer
+        - IPv4Layer
+        - TCPLayer
+        - UDPLayer
+*/
 
+
+// LAYER 2 -> Ethernet Layer
 EthernetLayer::EthernetLayer(const uint8_t* packet) {
     eth = reinterpret_cast<const EthernetHeader*>(packet);        
 }
@@ -73,7 +81,8 @@ std::string IPv4Layer::print_ip(uint32_t ip){
         return oss.str();
 }
 
-// LAYER 4 -> TCP Header
+
+// LAYER 4 -> TCP Layer
 TCPLayer::TCPLayer(const uint8_t *packet){
     tcph = reinterpret_cast<const TCPHeader*>(packet);
 }
@@ -98,6 +107,7 @@ size_t TCPLayer::header_size() const {
     return ((tcph->data_offset >> 4) & 0x0F) * 4;
 }
 
+// Decodes TCP flag field
 std::vector<std::string> TCPLayer::decode_tcp_flags(uint8_t flags) {
 
     std::vector<std::string> result;
@@ -124,10 +134,11 @@ std::vector<std::string> TCPLayer::decode_tcp_flags(uint8_t flags) {
 }
 
 
-// LAYER 4 -> UDP Header
+// LAYER 4 -> UDP Layer
 UDPLayer::UDPLayer(const uint8_t *packet) {
     udph = reinterpret_cast<const UDPHeader*>(packet);
 }
+
 void UDPLayer::print() const {
     std::cout << "=== UDP Layer ===" << std::endl;
     std::cout << "Source Port: " << ntohs(udph->src) << std::endl;

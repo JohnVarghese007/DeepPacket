@@ -11,6 +11,12 @@
 #define UDP_HEADER_SIZE 8
 #define IPv4_ETHERTYPE 0x0800
 
+/*
+    Packet Validator Class Implementation
+    -  The PacketValidator class essentially handles the entire validation pipeline for DeepPacket
+    -  Takes a PacketView object parsed by the parser module and validates its fields
+    -  Deals with a set of validation errors defined in "packet-error.hpp"
+*/
 
 void  PacketValidator::validate_packet() {
   

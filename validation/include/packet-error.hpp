@@ -1,5 +1,6 @@
 #pragma once
 
+// Supported Validation Errors
 enum class ValidationError {
     NONE,
     TOO_SMALL_FOR_ETHERNET,

@@ -1,5 +1,4 @@
 #pragma once
-
 #include <cstdint>
 
 // LAYER 2 -> Ethernet Header
@@ -21,7 +20,6 @@ struct IPv4Header {
     uint16_t header_checksum;  // Header checksum
     uint32_t src_addr;         // Source IP address
     uint32_t dest_addr;         // Destination IP address
-    // options field would go here if IHL > 5
 };
 
 // LAYER 4 -> TCP Header
@@ -31,7 +29,7 @@ struct TCPHeader {
     uint32_t seq_num;
     uint32_t ack_num;
     uint8_t data_offset;
-    uint8_t flags; // flags bits issue
+    uint8_t flags; 
     uint16_t window;
     uint16_t checksum;
     uint16_t urgentptr;
