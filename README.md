@@ -9,13 +9,12 @@
 ## Features
 
 ### Current Features
-- Simulated Network Packets for Parsing
-- Completed minimal parser layer
-- Parser + Validation currently works on synthetic packets, yet to be tested on real packets
+- Completed minimal parser + validation + capture layers
+- Parser + Validation currently works on live-packets(IPv4, TCP, UDP only)
 
 ### Planned Features:
-- Packet validation pipeline
-- Raw Packet capture to replace simulated static packets
+- IPv6 support yet to be added to parser + validation which is literally most of the traffic
+- Other protocols may be optionally added
 - Possible imgui addition if all goes well
 
 ## Build
@@ -28,7 +27,7 @@ rm -rf build
 cmake -B build
 cmake --build build
 ```
-- Then run the build file
+- Then run the build file(saving output to a file for now)
 ```bash
 sudo ./build/app/DeepPacket > output.txt
 ```
