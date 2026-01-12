@@ -30,7 +30,7 @@ cmake --build build
 ```
 - Then run the build file
 ```bash
-./build/app/DeepPacket
+sudo ./build/app/DeepPacket > output.txt
 ```
 
 

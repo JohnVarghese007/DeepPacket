@@ -1,6 +1,7 @@
 #include <iostream>
 #include "parser.hpp"
 #include "validation.hpp"
+#include "raw-capture.hpp"
 
 // Sample TCP Packet (Ethernet + IPv4 + TCP Headers)
     uint8_t sample_tcp_packet[] = {   // with no payload
@@ -285,6 +286,7 @@ std::vector<std::string> expected_errors = {
 
 
 int main() {
+    /*
     std::cout << "\n=== TCP PACKET PARSING  ===" << std::endl;
     ParsedPacket tcp = parse_packet(std::span<const uint8_t>(sample_tcp_packet));
     tcp.view.print();
@@ -312,6 +314,45 @@ int main() {
         validator.print_errors();
     }
     std::cout << "\n============================\n" <<std::endl;
+    */
+
+    // Raw-capture checking
+    SocketCapture capture;
+
+    if (!capture.valid()) {
+        std::cerr << "Raw socket capture failed.\n";
+        return 1;
+    }
+
+    constexpr std::size_t MAX_FRAME_SIZE = 65536;
+    std::vector<uint8_t> buffer(MAX_FRAME_SIZE);
+
+    int captured = 0;
+
+    while (captured < 10) {
+        ssize_t bytes = capture.read_frame(buffer.data(), buffer.size());
+
+        if (bytes <= 0) {
+            continue;
+        }
+
+        std::cout << "\n=== Packet " << captured
+                  << " (" << bytes << " bytes) ===\n";
+
+        ParsedPacket packet = parse_packet(
+            std::span<const uint8_t>(buffer.data(), bytes)
+        );
+
+        packet.view.print();
+
+        PacketValidator validator(packet.view);
+        validator.print_errors();
+
+        captured++;
+    }
+
+    std::cout << "\nCaptured and processed 10 packets.\n";
+
 
     return 0;
 }

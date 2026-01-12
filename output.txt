@@ -1,0 +1,138 @@
+
+=== Packet 0 (107 bytes) ===
+=========== PACKET VIEW =============
+=== ETHERNET LAYER ===
+Source MAC: 08:00:27:9D:57:DB
+Destination MAC: 33:33:00:00:00:FB
+EtherType: 86DD
+=======================
+IPv4: <invalid>
+Invalid Ethertype
+
+=== Packet 1 (349 bytes) ===
+=========== PACKET VIEW =============
+=== ETHERNET LAYER ===
+Source MAC: 08:00:27:9D:57:DB
+Destination MAC: FF:FF:FF:FF:FF:FF
+EtherType: 0800
+=======================
+=== IPv4 Layer ===
+Source IP: 0.0.0.0
+Destination IP: 255.255.255.255
+Protocol: 17
+==================
+=== UDP Layer ===
+Source Port: 68
+Destination Port: 67
+Length: 315
+Checksum: 6131
+=================
+Payload Length: 315 bytes
+=====================================
+No errors found during Validation
+
+=== Packet 2 (217 bytes) ===
+=========== PACKET VIEW =============
+=== ETHERNET LAYER ===
+Source MAC: 08:00:27:9D:57:DB
+Destination MAC: 33:33:00:00:00:FB
+EtherType: 86DD
+=======================
+IPv4: <invalid>
+Invalid Ethertype
+
+=== Packet 3 (70 bytes) ===
+=========== PACKET VIEW =============
+=== ETHERNET LAYER ===
+Source MAC: 08:00:27:9D:57:DB
+Destination MAC: 33:33:00:00:00:02
+EtherType: 86DD
+=======================
+IPv4: <invalid>
+Invalid Ethertype
+
+=== Packet 4 (107 bytes) ===
+=========== PACKET VIEW =============
+=== ETHERNET LAYER ===
+Source MAC: 08:00:27:9D:57:DB
+Destination MAC: 33:33:00:00:00:FB
+EtherType: 86DD
+=======================
+IPv4: <invalid>
+Invalid Ethertype
+
+=== Packet 5 (349 bytes) ===
+=========== PACKET VIEW =============
+=== ETHERNET LAYER ===
+Source MAC: 08:00:27:9D:57:DB
+Destination MAC: FF:FF:FF:FF:FF:FF
+EtherType: 0800
+=======================
+=== IPv4 Layer ===
+Source IP: 0.0.0.0
+Destination IP: 255.255.255.255
+Protocol: 17
+==================
+=== UDP Layer ===
+Source Port: 68
+Destination Port: 67
+Length: 315
+Checksum: 63139
+=================
+Payload Length: 315 bytes
+=====================================
+No errors found during Validation
+
+=== Packet 6 (70 bytes) ===
+=========== PACKET VIEW =============
+=== ETHERNET LAYER ===
+Source MAC: 08:00:27:9D:57:DB
+Destination MAC: 33:33:00:00:00:02
+EtherType: 86DD
+=======================
+IPv4: <invalid>
+Invalid Ethertype
+
+=== Packet 7 (107 bytes) ===
+=========== PACKET VIEW =============
+=== ETHERNET LAYER ===
+Source MAC: 08:00:27:9D:57:DB
+Destination MAC: 33:33:00:00:00:FB
+EtherType: 86DD
+=======================
+IPv4: <invalid>
+Invalid Ethertype
+
+=== Packet 8 (349 bytes) ===
+=========== PACKET VIEW =============
+=== ETHERNET LAYER ===
+Source MAC: 08:00:27:9D:57:DB
+Destination MAC: FF:FF:FF:FF:FF:FF
+EtherType: 0800
+=======================
+=== IPv4 Layer ===
+Source IP: 0.0.0.0
+Destination IP: 255.255.255.255
+Protocol: 17
+==================
+=== UDP Layer ===
+Source Port: 68
+Destination Port: 67
+Length: 315
+Checksum: 34177
+=================
+Payload Length: 315 bytes
+=====================================
+No errors found during Validation
+
+=== Packet 9 (70 bytes) ===
+=========== PACKET VIEW =============
+=== ETHERNET LAYER ===
+Source MAC: 08:00:27:9D:57:DB
+Destination MAC: 33:33:00:00:00:02
+EtherType: 86DD
+=======================
+IPv4: <invalid>
+Invalid Ethertype
+
+Captured and processed 10 packets.
