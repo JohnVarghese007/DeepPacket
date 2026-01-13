@@ -1,21 +1,27 @@
 # DeepPacket 
-- A C++ Network Packet Parser with Validation for Network Protocols
+- A zero-copy network packet inspection tool with live capture, protocol parsing and validation.
 - STATUS: WIP
 
 ## Overview
-- DeepPacket is a modular zero-copy C++ tool for parsing  raw network packets
-- Inspired by Wireshark and aim to create a similar packet inspection tool
+- DeepPacket is a network packet inspection tool inspired by Wireshark.
+- It captures raw Ethernet frames, parses protocol layers and validates packet fields with a zero-copy design to minimize parser overhead.
+- Main goal was to build something similar to wireshark at least on a very tiny scale.
 
 ## Features
 
 ### Current Features
-- Completed minimal parser + validation + capture layers
-- Parser + Validation currently works on live-packets(IPv4, TCP, UDP only)
+- Live packet capture using Linux sockets
+- Zero-copy parsing + Validation pipeline that currently supports the following:
+    - IPv4
+    - TCP
+    - UDP
+- Very very minimal GUI with working start/stop capture
+- Real time display of parsed packet fields with validation results
 
 ### Planned Features:
-- IPv6 support yet to be added to parser + validation which is literally most of the traffic
+- IPv6/ARP support yet to be added to parser + validation which is literally most of the traffic
 - Other protocols may be optionally added
-- Possible imgui addition if all goes well
+- More polish for GUI
 
 ## Build
 - This Project uses CMake
@@ -27,9 +33,9 @@ rm -rf build
 cmake -B build
 cmake --build build
 ```
-- Then run the build file(saving output to a file for now)
+- Then run the build file
 ```bash
-sudo ./build/app/DeepPacket > output.txt
+sudo ./build/app/DeepPacketUI
 ```
 
 

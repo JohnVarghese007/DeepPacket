@@ -21,11 +21,11 @@ SocketCapture::SocketCapture() {
         return;
     }
 
-    // Bind to specific interface: enp0s3
+    // Bind to specific interface: enp0s8
     sockaddr_ll sll{};
     sll.sll_family   = AF_PACKET;
     sll.sll_protocol = htons(ETH_P_ALL);
-    sll.sll_ifindex  = if_nametoindex("enp0s3");
+    sll.sll_ifindex  = if_nametoindex("enp0s8");
 
     if (sll.sll_ifindex == 0) {
         perror("if_nametoindex");
