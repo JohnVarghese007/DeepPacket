@@ -7,20 +7,22 @@
 #define TCP_PROTOCOL_VALUE 6
 #define UDP_PROTOCOL_VALUE 17
 #define IPv4_ETHERTYPE 0x0800
+#define IPv6_ETHERTYPE 0x08DD
+#define ARP_ETHERTYPE 0x0806
 #define MINIMUM_TCP_HEADER_SIZE 20
 #define MINIMUM_UDP_HEADER_SIZE 8
 
 /*
     PacketView Class Implementation
     - This class provides a structural view of a raw network packet
-    - parses raw byte buffer into supported protocol layers (Ethernet, IPv4, TCP, UDP)
+    - parses raw byte buffer into supported protocol layers (Ethernet, ARP, IPv4, TCP, UDP)
     - Does not handle validation -> that is to be done separately by the validation module
 */
 
 // PacketView Constructor
 PacketView::PacketView(const uint8_t* packet, size_t length) :
     data(packet), length(length), 
-    has_eth(false), has_ip(false), has_tcp(false), has_udp(false),
+    has_eth(false), has_arp(false), has_ip(false), has_tcp(false), has_udp(false),
     payload(nullptr), payload_len(0), l4_type(L4Type::UNKNOWN)
 {
     parse_layers();
@@ -36,59 +38,91 @@ void PacketView::parse_layers() {
     eth_layer = EthernetLayer(data);
     has_eth = true;
 
-    // EtherType check for IPv4
+    // EtherType check(ARP, IPv4)
     uint16_t ethertype = ntohs(eth_layer.eth->ether_type);
-    if (ethertype != IPv4_ETHERTYPE) {
-        return; 
+
+    if (ethertype == ARP_ETHERTYPE) {
+        // ARP Layer
+        arp_layer = ARPLayer(data + eth_layer.header_size());
+        has_arp = true;
     }
-
-    // IPv4 Layer
-    size_t ip_offset = sizeof(EthernetHeader);
-    if (length < ip_offset + 1) {
-        return;
-    }
-    ip_layer = IPv4Layer(data + ip_offset);
-    has_ip = true;
-
-    // Looking at ihl bits to determine IPv4 header size
-    size_t ihl = (ip_layer.iph->version_ihl & 0x0F) * 4;
-
-    // Adding ihl to ip_offset to point to L4 header
-    size_t l4_offset = ip_offset + ihl;    
-
-    // Determining Layer 4 Protocol
-    if(ip_layer.iph->protocol == TCP_PROTOCOL_VALUE) {
-        l4_type = L4Type::TCP;
-        if (length < l4_offset + 1) {
+    else if (ethertype == IPv4_ETHERTYPE) {
+        // IPv4 Layer
+        size_t ip_offset = sizeof(EthernetHeader);
+        if (length < ip_offset + 1) {
             return;
         }
-        tcp_layer = TCPLayer(data + l4_offset);
-        has_tcp = true;
-        payload = (l4_offset < length) ? data + l4_offset : nullptr;
-        payload_len = (l4_offset < length) ? (length - l4_offset) : 0;        
-        return;
-    }
-    else if(ip_layer.iph->protocol == UDP_PROTOCOL_VALUE) {
-        l4_type = L4Type::UDP;
-        if (length < l4_offset + 1) {
+        ip_layer = IPv4Layer(data + ip_offset);
+        has_ip = true;
+
+        // Looking at ihl bits to determine IPv4 header size
+        size_t ihl = (ip_layer.iph->version_ihl & 0x0F) * 4;
+
+        // ihl bounds checks
+        if (ihl < 20)
             return;
+
+        if (ip_offset + ihl > length)
+            return;
+
+        // Adding ihl to ip_offset to point to L4 header
+        size_t l4_offset = ip_offset + ihl;    
+
+        // Determining Layer 4 Protocol
+        if(ip_layer.iph->protocol == TCP_PROTOCOL_VALUE) {
+            l4_type = L4Type::TCP;
+            if (length < l4_offset + 1) {
+                return;
+            }
+            tcp_layer = TCPLayer(data + l4_offset);
+has_tcp = true;
+
+size_t tcp_header_len =
+    ((tcp_layer.tcph->data_offset >> 4) & 0x0F) * 4;
+
+if (tcp_header_len < MINIMUM_TCP_HEADER_SIZE ||
+    l4_offset + tcp_header_len > length) {
+    payload = nullptr;
+    payload_len = 0;
+    return;
+}
+
+payload = data + l4_offset + tcp_header_len;
+payload_len = length - (l4_offset + tcp_header_len);
+       
         }
-        udp_layer = UDPLayer(data + l4_offset);
-        has_udp = true;
-        payload = (l4_offset < length) ? data + l4_offset : nullptr;
-        payload_len = (l4_offset < length) ? (length - l4_offset) : 0;
-        return;
-    }
-    else {
-        // Unsupported L4 Protocol
-        l4_type = L4Type::UNKNOWN;
-    }
+        else if(ip_layer.iph->protocol == UDP_PROTOCOL_VALUE) {
+            l4_type = L4Type::UDP;
+            if (length < l4_offset + 1) {
+                return;
+            }
+            // UDP branch
+udp_layer = UDPLayer(data + l4_offset);
+has_udp = true;
+
+size_t udp_header_len = MINIMUM_UDP_HEADER_SIZE;
+
+if (l4_offset + udp_header_len > length) {
+    payload = nullptr;
+    payload_len = 0;
+    return;
+}
+
+payload = data + l4_offset + udp_header_len;
+payload_len = length - (l4_offset + udp_header_len);
+
+        }
+        else {
+            // Unsupported L4 Protocol
+            l4_type = L4Type::UNKNOWN;
+        }
+    }    
    
 }   
 
 // Print Packet View Details
 void PacketView::print() const {
-    std::cout << "=========== PACKET VIEW =============\n";
+    std::cout << "=========== PACKET VIEW =============" << std::endl;
 
     if(has_eth) {
         eth_layer.print();
@@ -96,6 +130,13 @@ void PacketView::print() const {
     else { 
         std::cout << "Ethernet: <invalid>" << std::endl; 
         return; 
+    }
+
+    // ARP Packets do not go down further
+    if (has_arp) {
+        arp_layer.print();
+        std::cout << "=====================================" << std::endl;
+        return;
     }
 
     if(has_ip) {

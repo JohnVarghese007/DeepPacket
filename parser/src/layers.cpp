@@ -18,10 +18,12 @@
     Network Layers Implementation
     - This file constains implementations of the following classes:
         - EthernetLayer
+        - ARPLayer
         - IPv4Layer
         - TCPLayer
         - UDPLayer
 */
+
 
 
 // LAYER 2 -> Ethernet Layer
@@ -53,6 +55,61 @@ std::string EthernetLayer::print_mac(const uint8_t *mac){
 }
 
 
+// LAYER 2.5 -> ARP Layer
+ARPLayer::ARPLayer(const uint8_t *packet) {
+    arp = reinterpret_cast<const ARPHeader*>(packet);
+}
+
+void ARPLayer::print() const {
+    std::cout << "=== ARP LAYER ===" << std::endl;
+    // opcode -> 1= Request, 2 = Reply
+    uint16_t opcode = ntohs(arp->opcode);
+    std::cout << "Opcode: " << opcode;
+    if(opcode == 1) std::cout << "(Request)";
+    else if(opcode == 2) std::cout << "(Reply)";
+    else std::cout << "(Invalid)";
+    std::cout << std::endl;
+
+    // Copy IPs to 32 bit
+    uint32_t sender_ip_raw;
+    std::memcpy(&sender_ip_raw, arp->sender_ip, 4);
+    uint32_t target_ip_raw;
+    std::memcpy(&target_ip_raw, arp->target_ip, 4);
+
+    std::cout << "Sender MAC: " << print_mac(arp->sender_mac) << std::endl;
+    std::cout << "Sender IP: "  << print_ip(sender_ip_raw) << std::endl;
+    std::cout << "Target MAC: " << print_mac(arp->target_mac) << std::endl;
+    std::cout << "Target IP: "  << print_ip(target_ip_raw) << std::endl;
+    std::cout << "=======================" << std::endl;
+}
+
+size_t ARPLayer::header_size() const {
+    return sizeof(ARPHeader);
+}
+
+std::string ARPLayer::print_mac(const uint8_t *mac){
+    std::ostringstream oss;
+    for(int i =0; i < 6; i++) {
+        oss << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << (int)mac[i];
+        if(i < 5){
+            oss << ":";
+        }
+    }
+    return oss.str();
+}
+
+std::string ARPLayer::print_ip(uint32_t ip){
+    std::ostringstream oss;
+    ip = ntohl(ip);
+    oss << ((ip >> 24) & 0xFF) << "."
+        << ((ip >> 16) & 0xFF) << "."
+        << ((ip >> 8) & 0xFF) << "."
+        << (ip & 0xFF);
+        return oss.str();
+}
+
+
+
 // LAYER 3 -> IPv4 Layer
 IPv4Layer::IPv4Layer(const uint8_t *packet) {
     iph = reinterpret_cast<const IPv4Header*>(packet);
@@ -80,6 +137,7 @@ std::string IPv4Layer::print_ip(uint32_t ip){
         << (ip & 0xFF);
         return oss.str();
 }
+
 
 
 // LAYER 4 -> TCP Layer
@@ -132,6 +190,7 @@ std::vector<std::string> TCPLayer::decode_tcp_flags(uint8_t flags) {
 
     return result;
 }
+
 
 
 // LAYER 4 -> UDP Layer

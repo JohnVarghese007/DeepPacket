@@ -12,12 +12,14 @@ public:
 
     // Layer Presence Flags
     bool has_eth;
+    bool has_arp;
     bool has_ip;
     bool has_tcp;
     bool has_udp;
 
     // Layer Objects
     EthernetLayer eth_layer;
+    ARPLayer arp_layer;
     IPv4Layer ip_layer;
     TCPLayer tcp_layer;
     UDPLayer udp_layer;

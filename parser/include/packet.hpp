@@ -8,6 +8,22 @@ struct EthernetHeader {
     uint16_t ether_type;  // bytes 12-13
 };
 
+
+// ARP header (technically both layers 2 and 3)
+struct ARPHeader {
+    uint16_t header_type; // Hardware type (1 = Ethernet)
+    uint16_t protocol_type;  //Protocol type (0x0800 etc.)
+    uint8_t header_len;
+    uint8_t protocol_len;
+    uint16_t opcode;
+    uint8_t sender_mac[6];
+    uint8_t sender_ip[4];
+    uint8_t target_mac[6];
+    uint8_t target_ip[4];
+
+};
+
+
 // LAYER 3 -> IPv4 Header
 struct IPv4Header {
     uint8_t  version_ihl;      // Version (4 bits) + IHL (4 bits)

@@ -3,6 +3,7 @@
 #include "packet.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,25 @@ private:
     static std::string print_mac(const uint8_t *mac);
 };
 
+
+// LAYER 2.5 -> ARP Layer
+class ARPLayer {
+public:
+    const ARPHeader *arp;
+
+    // Default Constructor
+    ARPLayer() : arp(nullptr) {}
+
+    // ARPLayer Constructor
+    ARPLayer(const uint8_t* packet);
+
+    void print() const;
+    size_t header_size() const;
+
+private:
+    static std::string print_mac(const uint8_t *mac);
+    static std::string print_ip(const uint32_t ip);
+};
 
 
 // LAYER 3 -> IPv4 Layer
@@ -62,7 +82,6 @@ public:
 private:
     static std::vector<std::string> decode_tcp_flags(uint8_t flags);
 };
-
 
 
 // LAYER 4 -> UDP Header

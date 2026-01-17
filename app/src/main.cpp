@@ -284,9 +284,95 @@ std::vector<std::string> expected_errors = {
 };
 
 
+// SAMPLE  CHECKSUM PACKETS, ONE FOR EACH KIND OF ERROR:
+std::vector<std::vector<uint8_t>> checksum_packets = {
 
-int main() {
-    /*
+    // 0. VALID TCP
+    {
+        0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
+        0x11,0x22,0x33,0x44,0x55,0x66,
+        0x08,0x00,
+
+        0x45,0x00,0x00,0x2C,
+        0x00,0x01,0x00,0x00,
+        0x40,0x06,0xF9,0x77,   // FIXED IPv4 checksum 0x40,0x06,0xF9,0x77,
+        0xC0,0xA8,0x00,0x01,
+        0xC0,0xA8,0x00,0x02,
+
+        0x00,0x50,0x01,0xBB,
+        0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,
+        0x50,0x02,0x20,0x00,
+        0x08,0x6E,             // FIXED TCP checksum
+        0x00,0x00,
+
+        0x01,0x02,0x03,0x04
+    },
+
+    // 1. INVALID TCP
+    {
+        0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
+        0x11,0x22,0x33,0x44,0x55,0x66,
+        0x08,0x00,
+
+        0x45,0x00,0x00,0x2C,
+        0x00,0x01,0x00,0x00,
+        0x40,0x06,0xF9,0x77,   // FIXED IPv4 checksum
+        0xC0,0xA8,0x00,0x01,
+        0xC0,0xA8,0x00,0x02,
+
+        0x00,0x50,0x01,0xBB,
+        0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,
+        0x50,0x02,0x20,0x00,
+        0x00,0x00,             // BAD TCP checksum
+        0x00,0x00,
+
+        0x01,0x02,0x03,0x04
+    },
+
+    // 2. VALID UDP
+    {
+        0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
+        0x11,0x22,0x33,0x44,0x55,0x66,
+        0x08,0x00,
+
+        0x45,0x00,0x00,0x20,
+        0x00,0x02,0x00,0x00,
+        0x40,0x11,0xF9,0x77,   // FIXED IPv4 checksum 0x40,0x11,0xF9,0x77,
+        0xC0,0xA8,0x00,0x01,
+        0xC0,0xA8,0x00,0x02,
+
+        0x13,0x89,0x13,0x8A,
+        0x00,0x0C,
+        0x53,0x69,             // VALID UDP checksum
+
+        0x01,0x02,0x03,0x04
+    },
+
+    // 3. INVALID UDP
+    {
+        0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
+        0x11,0x22,0x33,0x44,0x55,0x66,
+        0x08,0x00,
+
+        0x45,0x00,0x00,0x20,
+        0x00,0x02,0x00,0x00,
+        0x40,0x11,0xF9,0x77,   // FIXED IPv4 checksum
+        0xC0,0xA8,0x00,0x01,
+        0xC0,0xA8,0x00,0x02,
+
+        0x13,0x89,0x13,0x8A,
+        0x00,0x0C,
+        0x00,0x00,             // BAD UDP checksum
+
+        0x01,0x02,0x03,0x04
+    }
+};
+
+
+// BASELINE PARSING + VALIDATION CHECKS
+void baseline() {
     std::cout << "\n=== TCP PACKET PARSING  ===" << std::endl;
     ParsedPacket tcp = parse_packet(std::span<const uint8_t>(sample_tcp_packet));
     tcp.view.print();
@@ -314,9 +400,50 @@ int main() {
         validator.print_errors();
     }
     std::cout << "\n============================\n" <<std::endl;
-    */
+}
 
-    // Raw-capture checking
+
+// CHECKSUM TESTS
+void checksum_test() {
+    std::cout << "\n=== MALFORMED PACKET TESTS FOR CHECKSUM ===" << std::endl;
+    for(size_t i = 0; i < checksum_packets.size(); i++) {
+        std::cout << " Malformed Packet Test: " << i << " " << std::endl;
+
+        // Print raw IPv4 checksum bytes from the vector
+        std::cout << "Vector IPv4 checksum bytes: "
+              << std::hex
+              << (int)checksum_packets[i][14 + 10] << " "
+              << (int)checksum_packets[i][14 + 11]
+              << std::dec << std::endl;
+
+        ParsedPacket packet = parse_packet(std::span<const uint8_t>(checksum_packets[i]));
+
+        packet.view.print();
+
+        // Print raw IPv4 checksum bytes actually parsed
+        if (packet.view.has_ip) {
+            const IPv4Header* iph = packet.view.ip_layer.iph;
+            std::cout << "Parsed IPv4 checksum bytes: "
+                  << std::hex
+                  << ((iph->header_checksum >> 8) & 0xFF) << " "
+                  << (iph->header_checksum & 0xFF)
+                  << std::dec << std::endl;
+        }
+
+        std::cout << "\n=== Validation for malformed packet " << i << " ===" << std::endl;    
+        PacketValidator validator(packet.view);
+        validator.print_errors();
+
+        std::cout << "----------------------------------------\n";
+    }
+
+    std::cout << "\n============================\n" <<std::endl;
+
+}
+
+
+// RAW CAPTURE TEST
+int raw_capture_test(){
     SocketCapture capture;
 
     if (!capture.valid()) {
@@ -352,7 +479,21 @@ int main() {
     }
 
     std::cout << "\nCaptured and processed 10 packets.\n";
+    return 0;
+}
 
 
+
+int main() {
+
+    checksum_test();
+    // baseline();
+
+    /* RAW CAPTURE TEST
+    int res = raw_capture_test();    
+    if(res!= 0){
+        return 1;
+    }
+    */
     return 0;
 }

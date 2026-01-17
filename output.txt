@@ -1,210 +1,111 @@
 
-=== Packet 0 (81 bytes) ===
+=== MALFORMED PACKET TESTS FOR CHECKSUM ===
+ Malformed Packet Test: 0 
+Vector IPv4 checksum bytes: f9 77
 =========== PACKET VIEW =============
 === ETHERNET LAYER ===
-Source MAC: 08:00:27:9D:57:DB
-Destination MAC: 52:55:0A:00:02:02
+Source MAC: 11:22:33:44:55:66
+Destination MAC: AA:BB:CC:DD:EE:FF
 EtherType: 0800
 =======================
 === IPv4 Layer ===
-Source IP: 10.0.2.15
-Destination IP: 192.168.61.230
-Protocol: 17
+Source IP: 192.168.0.1
+Destination IP: 192.168.0.2
+Protocol: 6
 ==================
-=== UDP Layer ===
-Source Port: 54678
-Destination Port: 53
-Length: 47
-Checksum: 2782
+=== TCP Layer ===
+Source Port: 80
+Destination Port: 443
+Flags: SYN
 =================
-Payload Length: 47 bytes
+Payload Length: 4 bytes
 =====================================
-No errors found during Validation
+Parsed IPv4 checksum bytes: 77 F9
 
-=== Packet 1 (89 bytes) ===
+=== Validation for malformed packet 0 ===
+Computed IPv4 checksum = F977  Received = F977
+TCP invalid checksum
+----------------------------------------
+ Malformed Packet Test: 1 
+Vector IPv4 checksum bytes: F9 77
 =========== PACKET VIEW =============
 === ETHERNET LAYER ===
-Source MAC: 08:00:27:9D:57:DB
-Destination MAC: 52:55:0A:00:02:02
+Source MAC: 11:22:33:44:55:66
+Destination MAC: AA:BB:CC:DD:EE:FF
 EtherType: 0800
 =======================
 === IPv4 Layer ===
-Source IP: 10.0.2.15
-Destination IP: 192.168.61.230
-Protocol: 17
+Source IP: 192.168.0.1
+Destination IP: 192.168.0.2
+Protocol: 6
 ==================
-=== UDP Layer ===
-Source Port: 51869
-Destination Port: 53
-Length: 55
-Checksum: 2790
+=== TCP Layer ===
+Source Port: 80
+Destination Port: 443
+Flags: SYN
 =================
-Payload Length: 55 bytes
+Payload Length: 4 bytes
 =====================================
-No errors found during Validation
+Parsed IPv4 checksum bytes: 77 F9
 
-=== Packet 2 (79 bytes) ===
+=== Validation for malformed packet 1 ===
+Computed IPv4 checksum = F977  Received = F977
+TCP invalid checksum
+----------------------------------------
+ Malformed Packet Test: 2 
+Vector IPv4 checksum bytes: F9 77
 =========== PACKET VIEW =============
 === ETHERNET LAYER ===
-Source MAC: 08:00:27:9D:57:DB
-Destination MAC: 52:55:0A:00:02:02
+Source MAC: 11:22:33:44:55:66
+Destination MAC: AA:BB:CC:DD:EE:FF
 EtherType: 0800
 =======================
 === IPv4 Layer ===
-Source IP: 10.0.2.15
-Destination IP: 192.168.61.230
+Source IP: 192.168.0.1
+Destination IP: 192.168.0.2
 Protocol: 17
 ==================
 === UDP Layer ===
-Source Port: 56571
-Destination Port: 53
-Length: 45
-Checksum: 2780
+Source Port: 5001
+Destination Port: 5002
+Length: 12
+Checksum: 21353
 =================
-Payload Length: 45 bytes
+Payload Length: 4 bytes
 =====================================
-No errors found during Validation
+Parsed IPv4 checksum bytes: 77 F9
 
-=== Packet 3 (79 bytes) ===
+=== Validation for malformed packet 2 ===
+Computed IPv4 checksum = F977  Received = F977
+UDP invalid checksum
+----------------------------------------
+ Malformed Packet Test: 3 
+Vector IPv4 checksum bytes: F9 77
 =========== PACKET VIEW =============
 === ETHERNET LAYER ===
-Source MAC: 08:00:27:9D:57:DB
-Destination MAC: 52:55:0A:00:02:02
+Source MAC: 11:22:33:44:55:66
+Destination MAC: AA:BB:CC:DD:EE:FF
 EtherType: 0800
 =======================
 === IPv4 Layer ===
-Source IP: 10.0.2.15
-Destination IP: 192.168.61.230
+Source IP: 192.168.0.1
+Destination IP: 192.168.0.2
 Protocol: 17
 ==================
 === UDP Layer ===
-Source Port: 38576
-Destination Port: 53
-Length: 45
-Checksum: 2780
+Source Port: 5001
+Destination Port: 5002
+Length: 12
+Checksum: 0
 =================
-Payload Length: 45 bytes
+Payload Length: 4 bytes
 =====================================
+Parsed IPv4 checksum bytes: 77 F9
+
+=== Validation for malformed packet 3 ===
+Computed IPv4 checksum = F977  Received = F977
 No errors found during Validation
+----------------------------------------
 
-=== Packet 4 (79 bytes) ===
-=========== PACKET VIEW =============
-=== ETHERNET LAYER ===
-Source MAC: 08:00:27:9D:57:DB
-Destination MAC: 52:55:0A:00:02:02
-EtherType: 0800
-=======================
-=== IPv4 Layer ===
-Source IP: 10.0.2.15
-Destination IP: 192.168.61.230
-Protocol: 17
-==================
-=== UDP Layer ===
-Source Port: 52502
-Destination Port: 53
-Length: 45
-Checksum: 2780
-=================
-Payload Length: 45 bytes
-=====================================
-No errors found during Validation
+============================
 
-=== Packet 5 (92 bytes) ===
-=========== PACKET VIEW =============
-=== ETHERNET LAYER ===
-Source MAC: 08:00:27:9D:57:DB
-Destination MAC: 52:55:0A:00:02:02
-EtherType: 0800
-=======================
-=== IPv4 Layer ===
-Source IP: 10.0.2.15
-Destination IP: 192.168.61.230
-Protocol: 17
-==================
-=== UDP Layer ===
-Source Port: 46474
-Destination Port: 53
-Length: 58
-Checksum: 2793
-=================
-Payload Length: 58 bytes
-=====================================
-No errors found during Validation
-
-=== Packet 6 (89 bytes) ===
-=========== PACKET VIEW =============
-=== ETHERNET LAYER ===
-Source MAC: 08:00:27:9D:57:DB
-Destination MAC: 52:55:0A:00:02:02
-EtherType: 0800
-=======================
-=== IPv4 Layer ===
-Source IP: 10.0.2.15
-Destination IP: 192.168.61.230
-Protocol: 17
-==================
-=== UDP Layer ===
-Source Port: 41870
-Destination Port: 53
-Length: 55
-Checksum: 2790
-=================
-Payload Length: 55 bytes
-=====================================
-No errors found during Validation
-
-=== Packet 7 (81 bytes) ===
-=========== PACKET VIEW =============
-=== ETHERNET LAYER ===
-Source MAC: 08:00:27:9D:57:DB
-Destination MAC: 52:55:0A:00:02:02
-EtherType: 0800
-=======================
-=== IPv4 Layer ===
-Source IP: 10.0.2.15
-Destination IP: 192.168.61.230
-Protocol: 17
-==================
-=== UDP Layer ===
-Source Port: 52208
-Destination Port: 53
-Length: 47
-Checksum: 2782
-=================
-Payload Length: 47 bytes
-=====================================
-No errors found during Validation
-
-=== Packet 8 (81 bytes) ===
-=========== PACKET VIEW =============
-=== ETHERNET LAYER ===
-Source MAC: 08:00:27:9D:57:DB
-Destination MAC: 52:55:0A:00:02:02
-EtherType: 0800
-=======================
-=== IPv4 Layer ===
-Source IP: 10.0.2.15
-Destination IP: 192.168.61.230
-Protocol: 17
-==================
-=== UDP Layer ===
-Source Port: 54678
-Destination Port: 53
-Length: 47
-Checksum: 2782
-=================
-Payload Length: 47 bytes
-=====================================
-No errors found during Validation
-
-=== Packet 9 (42 bytes) ===
-=========== PACKET VIEW =============
-=== ETHERNET LAYER ===
-Source MAC: 08:00:27:9D:57:DB
-Destination MAC: 52:55:0A:00:02:02
-EtherType: 0806
-=======================
-IPv4: <invalid>
-Invalid Ethertype
-
-Captured and processed 10 packets.

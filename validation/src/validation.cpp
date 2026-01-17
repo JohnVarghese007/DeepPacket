@@ -3,13 +3,54 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <cstring>
 #include <arpa/inet.h>
 
 #define ETHERNET_HEADER_SIZE 14
 #define IPV4_MIN_HEADER_SIZE 20
+#define IPV4_MAX_HEADER_SIZE 60
 #define TCP_MIN_HEADER_SIZE 20
 #define UDP_HEADER_SIZE 8
 #define IPv4_ETHERTYPE 0x0800
+#define ARP_ETHERTYPE 0x0806
+#define IPv6_ETHERTYPE 0x08DD
+
+// Utility/Helper functions
+uint16_t compute_checksum(const uint8_t* buffer, size_t len) {
+    uint32_t sum = 0;
+
+    while(len > 1) {
+        uint16_t high = buffer[0] << 8;
+        uint16_t low = buffer[1];
+        uint16_t word = high | low;
+
+        sum += word;
+        // move forward by two bytes
+        buffer += 2;
+        len -= 2;
+
+        // wrap carry bit if any
+        if(sum & 0x10000) {
+            sum = (sum & 0xFFFF) + 1;
+        }
+    }
+
+    // handle odd number of bytes in buffer
+    if(len == 1){
+        sum += buffer[0] << 8; // since there is only 1 byte
+
+        // wrap carry bit if any
+        if(sum & 0x10000){
+            sum = (sum & 0xFFFF) + 1;
+        }
+    }
+
+    // return 16 bit ones complement as the computed checksum
+    return  ~sum & 0xFFFF;
+}
+
+
+
 
 /*
     Packet Validator Class Implementation
@@ -73,14 +114,17 @@ void  PacketValidator::validate_packet() {
     INVALID_IPV4_IHL_LENGTH,
     INVALID_IPV4_TOTAL_LENGTH,
     IPV4_TOTAL_LENGTH_EXCEEDS_PACKET,
+    IPV4_INVALID_CHECKSUM,
     MISSING_TCP_HEADER,
     TOO_SMALL_FOR_TCP,
     INVALID_TCP_DATA_OFFSET,
     TCP_HEADER_EXCEEDS_PACKET,
+    TCP_INVALID_CHECKSUM,
     MISSING_UDP_HEADER,
     TOO_SMALL_FOR_UDP,
     INVALID_UDP_LENGTH,
-    UDP_LENGTH_EXCEEDS_PACKET,    
+    UDP_LENGTH_EXCEEDS_PACKET,
+    UDP_INVALID_CHECKSUM,    
     UNSUPPORTED_L4_PROTOCOL
 */
 void PacketValidator::print_errors() const {
@@ -122,6 +166,10 @@ void PacketValidator::print_errors() const {
             case ValidationError::IPV4_TOTAL_LENGTH_EXCEEDS_PACKET:
                 std::cout << "IPv4 total length exceeds packet" << std::endl;
                 break;
+
+            case ValidationError::IPV4_INVALID_CHECKSUM:
+                std::cout << "IPv4 invalid checksum" << std::endl;
+                break;
             
             case  ValidationError::MISSING_TCP_HEADER:
                 std::cout << "Missing TCP Header" << std::endl;
@@ -138,6 +186,10 @@ void PacketValidator::print_errors() const {
             case ValidationError::TCP_HEADER_EXCEEDS_PACKET:
                 std::cout << "TCP header exceeds packet" << std::endl;
                 break;
+
+            case ValidationError::TCP_INVALID_CHECKSUM:
+                std::cout << "TCP invalid checksum" << std::endl;
+                break;
             
             case ValidationError::MISSING_UDP_HEADER:
                 std::cout << "Missing UDP header" << std::endl;
@@ -153,6 +205,10 @@ void PacketValidator::print_errors() const {
 
             case ValidationError::UDP_LENGTH_EXCEEDS_PACKET:
                 std::cout << "UDP length exceeds packet" << std::endl;
+                break;
+
+            case ValidationError::UDP_INVALID_CHECKSUM:
+                std::cout << "UDP invalid checksum" << std::endl;
                 break;
 
             case ValidationError::UNSUPPORTED_L4_PROTOCOL:
@@ -241,6 +297,30 @@ bool PacketValidator::validate_ipv4(const PacketView& view, ValidationError& err
         return false;
     }
 
+    // Checksum validation 
+    const uint8_t* ip_header = reinterpret_cast<const uint8_t*>(ip_layer.iph);
+    size_t ip_header_len = header_len;
+
+    uint8_t temp[IPV4_MAX_HEADER_SIZE]; 
+    memcpy(temp, ip_header, ip_header_len);
+
+    // Zeroing out checksum field
+    temp[10] = 0;
+    temp[11] = 0;
+    uint16_t computed = compute_checksum(temp, ip_header_len);
+    uint16_t received = ntohs(ip_layer.iph->header_checksum);
+
+    // FOR DEBUGGING PURPOSES
+    std::cout << "Computed IPv4 checksum = "
+          << std::hex << computed
+          << "  Received = " << received
+          << std::dec << std::endl;
+
+    if (computed != received) {
+        error = ValidationError::IPV4_INVALID_CHECKSUM;
+        return false;
+    }
+
     return true;
 }
 
@@ -272,6 +352,48 @@ bool PacketValidator::validate_tcp(const PacketView& view, ValidationError& erro
         return false;
     }
 
+    // Checksum validation for TCP
+    const IPv4Header* iph = view.ip_layer.iph;
+    const TCPHeader* tcph = view.tcp_layer.tcph;
+
+    size_t ip_header_len = view.ip_layer.header_size();
+    tcp_offset = ETHERNET_HEADER_SIZE + ip_header_len;
+    size_t tcp_len = ntohs(iph->total_length) - ip_header_len;
+
+    // Build pseudo-header
+    uint8_t pseudo[12];
+    memcpy(pseudo, &iph->src_addr, 4);
+    memcpy(pseudo + 4, &iph->dest_addr, 4);
+    pseudo[8]  = 0;
+    pseudo[9]  = iph->protocol;
+    pseudo[10] = (tcp_len >> 8) & 0xFF;
+    pseudo[11] = tcp_len & 0xFF;
+
+    // Copy TCP header + payload
+    uint8_t temp[65535];
+    memcpy(temp, view.data + tcp_offset, tcp_len);
+
+    // Zero checksum field
+    temp[16] = 0;
+    temp[17] = 0;
+
+    // Compute checksum
+    uint32_t sum = 0;
+    sum = compute_checksum(pseudo, 12) + compute_checksum(temp, tcp_len);
+
+    // Fold carries
+    while (sum >> 16)
+        sum = (sum & 0xFFFF) + (sum >> 16);
+
+    uint16_t computed = ~sum & 0xFFFF;
+    uint16_t received = ntohs(tcph->checksum);
+
+    if (computed != received) {
+        error = ValidationError::TCP_INVALID_CHECKSUM;
+        return false;
+    }
+
+
     return true;
 }
 
@@ -301,6 +423,50 @@ bool PacketValidator::validate_udp(const PacketView& view, ValidationError& erro
         error = ValidationError::UDP_LENGTH_EXCEEDS_PACKET;
         return false;
     }
+
+    // Checksum validation for UDP
+    const IPv4Header* iph = view.ip_layer.iph;
+    const UDPHeader* udph = view.udp_layer.udph;
+
+    // UDP checksum of 0 means "no checksum" in IPv4
+    if (udph->checksum == 0)
+        return true;
+
+    size_t ip_header_len = view.ip_layer.header_size();
+    udp_offset = ETHERNET_HEADER_SIZE + ip_header_len;
+    size_t udp_length = ntohs(udph->length);
+
+    // Build pseudo-header
+    uint8_t pseudo[12];
+    memcpy(pseudo, &iph->src_addr, 4);
+    memcpy(pseudo + 4, &iph->dest_addr, 4);
+    pseudo[8]  = 0;
+    pseudo[9]  = iph->protocol;
+    pseudo[10] = (udp_length >> 8) & 0xFF;
+    pseudo[11] = udp_length & 0xFF;
+
+    // Copy UDP header + payload
+    uint8_t temp[65535];
+    memcpy(temp, view.data + udp_offset, udp_length);
+
+    // Zero checksum field
+    temp[6] = 0;
+    temp[7] = 0;
+
+    uint32_t sum = 0;
+    sum = compute_checksum(pseudo, 12) + compute_checksum(temp, udp_length);
+
+    while (sum >> 16)
+        sum = (sum & 0xFFFF) + (sum >> 16);
+
+    uint16_t computed = ~sum & 0xFFFF;
+    uint16_t received = ntohs(udph->checksum);
+
+    if (computed != received) {
+        error = ValidationError::UDP_INVALID_CHECKSUM;
+        return false;
+    }
+
 
     return true;
 }
