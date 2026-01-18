@@ -21,6 +21,7 @@ public:
 
 private:
     static bool validate_ethernet(const PacketView& view, ValidationError& error);
+    static bool validate_arp(const PacketView& view, ValidationError& error);
     static bool validate_ipv4(const PacketView& view, ValidationError& error);
     static bool validate_tcp(const PacketView& view, ValidationError& error);
     static bool validate_udp(const PacketView& view, ValidationError& error);    

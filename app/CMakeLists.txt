@@ -1,14 +1,3 @@
-add_executable(DeepPacket
-    src/main.cpp
-)
-
-target_link_libraries(DeepPacket
-    PRIVATE
-        parser
-        validation
-        capture
-)
-
 # New ImGui/GLFW/OpenGL frontend
 add_executable(DeepPacketUI
     src/ui_main.cpp

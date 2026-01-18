@@ -1,5 +1,6 @@
 #include "validation.hpp"
 #include <iostream>
+#include <iomanip>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -7,6 +8,11 @@
 #include <arpa/inet.h>
 
 #define ETHERNET_HEADER_SIZE 14
+#define ARP_HEADER_SIZE 8
+#define ARP_HTYPE_ETHERNET 1
+#define ARP_HLEN_ETHERNET 6
+#define ARP_OPCODE_REQUEST 1
+#define ARP_OPCODE_REPLY 2
 #define IPV4_MIN_HEADER_SIZE 20
 #define IPV4_MAX_HEADER_SIZE 60
 #define TCP_MIN_HEADER_SIZE 20
@@ -15,7 +21,10 @@
 #define ARP_ETHERTYPE 0x0806
 #define IPv6_ETHERTYPE 0x08DD
 
+
 // Utility/Helper functions
+
+// Computes checksum using the internet checksum algorithm
 uint16_t compute_checksum(const uint8_t* buffer, size_t len) {
     uint32_t sum = 0;
 
@@ -25,26 +34,21 @@ uint16_t compute_checksum(const uint8_t* buffer, size_t len) {
         uint16_t word = high | low;
 
         sum += word;
-        // move forward by two bytes
         buffer += 2;
         len -= 2;
 
-        // wrap carry bit if any
         if(sum & 0x10000) {
             sum = (sum & 0xFFFF) + 1;
         }
     }
 
-    // handle odd number of bytes in buffer
+    // handle odd number of bytes
     if(len == 1){
-        sum += buffer[0] << 8; // since there is only 1 byte
-
-        // wrap carry bit if any
+        sum += buffer[0] << 8; 
         if(sum & 0x10000){
             sum = (sum & 0xFFFF) + 1;
         }
     }
-
     // return 16 bit ones complement as the computed checksum
     return  ~sum & 0xFFFF;
 }
@@ -57,6 +61,7 @@ uint16_t compute_checksum(const uint8_t* buffer, size_t len) {
     -  The PacketValidator class essentially handles the entire validation pipeline for DeepPacket
     -  Takes a PacketView object parsed by the parser module and validates its fields
     -  Deals with a set of validation errors defined in "packet-error.hpp"
+    -  Contains public methods to print errors/raw bytes
 */
 
 void  PacketValidator::validate_packet() {
@@ -65,13 +70,25 @@ void  PacketValidator::validate_packet() {
     errors.clear();
 
     // Layer 2: Ethernet Validation
-    if (!validate_ethernet(view, err)) {
+    if(!validate_ethernet(view, err)) {
         errors.push_back(err);
         return;
     }
 
+    uint16_t ethertype = ntohs(view.eth_layer.eth->ether_type);
+
+    if(ethertype == ARP_ETHERTYPE) {    
+        // Layer 2.5: ARP Validation
+        if(!validate_arp(view, err)) {
+            errors.push_back(err);
+            return;
+        }
+        errors.push_back(ValidationError::NONE);
+        return;
+    }
+
     // Layer 3: IPv4 Validation
-    if (!validate_ipv4(view, err)) {
+    if(!validate_ipv4(view, err)) {
         errors.push_back(err);
         return;
     }
@@ -79,12 +96,12 @@ void  PacketValidator::validate_packet() {
     // Layer 4 Protocols based on l4_type
     switch (view.l4_type) {
         case L4Type::TCP:
-            if (!validate_tcp(view, err))
+            if(!validate_tcp(view, err))
                 errors.push_back(err);
             break;
 
         case L4Type::UDP:
-            if (!validate_udp(view, err))
+            if(!validate_udp(view, err))
                 errors.push_back(err);
             break;
 
@@ -95,135 +112,17 @@ void  PacketValidator::validate_packet() {
 
     // If there are no errors add a NONE flag to show that validation was completed with no errors
     // Lack of a NONE flag with no other errors means validation was never done
-    if (errors.empty())
+    if(errors.empty())
         errors.push_back(ValidationError::NONE);
 
     return;
 }
 
-/*
-    **** supported errors ***
 
-    NONE,
-    TOO_SMALL_FOR_ETHERNET,
-    INVALID_ETHERTYPE,
-    MISSING_IPV4_HEADER,
-    TOO_SMALL_FOR_IPV4,
-    INVALID_IPV4_VERSION,
-    INVALID_IPV4_IHL,
-    INVALID_IPV4_IHL_LENGTH,
-    INVALID_IPV4_TOTAL_LENGTH,
-    IPV4_TOTAL_LENGTH_EXCEEDS_PACKET,
-    IPV4_INVALID_CHECKSUM,
-    MISSING_TCP_HEADER,
-    TOO_SMALL_FOR_TCP,
-    INVALID_TCP_DATA_OFFSET,
-    TCP_HEADER_EXCEEDS_PACKET,
-    TCP_INVALID_CHECKSUM,
-    MISSING_UDP_HEADER,
-    TOO_SMALL_FOR_UDP,
-    INVALID_UDP_LENGTH,
-    UDP_LENGTH_EXCEEDS_PACKET,
-    UDP_INVALID_CHECKSUM,    
-    UNSUPPORTED_L4_PROTOCOL
-*/
+
 void PacketValidator::print_errors() const {
     for(ValidationError err: errors) {
-        switch(err) {
-
-            case ValidationError::TOO_SMALL_FOR_ETHERNET:
-                std::cout << "Too small for Ethernet" << std::endl;
-                break;
-
-            case ValidationError::INVALID_ETHERTYPE:
-                std::cout << "Invalid Ethertype" << std::endl;
-                break;
-
-            case ValidationError::MISSING_IPV4_HEADER:
-                std::cout << "Missing IPv4 header" << std::endl;
-                break;
-
-            case ValidationError::TOO_SMALL_FOR_IPV4:
-                std::cout << "Too small for IPv4" << std::endl;
-                break;
-            
-            case ValidationError::INVALID_IPV4_VERSION:
-                std::cout << "Invalid IPv4 version" << std::endl;
-                break;
-
-            case ValidationError::INVALID_IPV4_IHL:
-                std::cout << "Invalid IPv4 IHL" << std::endl;
-                break;
-
-            case ValidationError::INVALID_IPV4_IHL_LENGTH:
-                std::cout << "Invalid IPv4 IHL length" << std::endl;
-                break;
-
-            case ValidationError::INVALID_IPV4_TOTAL_LENGTH:
-                std::cout << "Invalid IPv4 Total length" << std::endl;
-                break;
-
-            case ValidationError::IPV4_TOTAL_LENGTH_EXCEEDS_PACKET:
-                std::cout << "IPv4 total length exceeds packet" << std::endl;
-                break;
-
-            case ValidationError::IPV4_INVALID_CHECKSUM:
-                std::cout << "IPv4 invalid checksum" << std::endl;
-                break;
-            
-            case  ValidationError::MISSING_TCP_HEADER:
-                std::cout << "Missing TCP Header" << std::endl;
-                break;
-
-            case ValidationError::TOO_SMALL_FOR_TCP:
-                std::cout << "Too small for TCP" << std::endl;
-                break;
-
-            case ValidationError::INVALID_TCP_DATA_OFFSET:
-                std::cout << "Invalid TCP data offset" << std::endl;
-                break;
-
-            case ValidationError::TCP_HEADER_EXCEEDS_PACKET:
-                std::cout << "TCP header exceeds packet" << std::endl;
-                break;
-
-            case ValidationError::TCP_INVALID_CHECKSUM:
-                std::cout << "TCP invalid checksum" << std::endl;
-                break;
-            
-            case ValidationError::MISSING_UDP_HEADER:
-                std::cout << "Missing UDP header" << std::endl;
-                break;
-
-            case ValidationError::TOO_SMALL_FOR_UDP:
-                std::cout << "Too small for UDP" << std::endl;
-                break;
-
-            case ValidationError::INVALID_UDP_LENGTH:
-                std::cout << "Invalid UDP length" << std::endl;
-                break;
-
-            case ValidationError::UDP_LENGTH_EXCEEDS_PACKET:
-                std::cout << "UDP length exceeds packet" << std::endl;
-                break;
-
-            case ValidationError::UDP_INVALID_CHECKSUM:
-                std::cout << "UDP invalid checksum" << std::endl;
-                break;
-
-            case ValidationError::UNSUPPORTED_L4_PROTOCOL:
-                std::cout << "Unsupported L4 Protocol" << std::endl;
-                break;
-            
-            case ValidationError::NONE:
-                std::cout << "No errors found during Validation" << std::endl;
-                break;
-
-            default:
-                std::cout << "Unsupported Error!" << std::endl;
-                std::cout << "Verify error and validation module design" << std::endl;
-                break;
-        }
+        std::cout << to_string(err) << std::endl;
     }
 
     // if there are no errors, not even NONE, that means validation never happened
@@ -235,15 +134,34 @@ void PacketValidator::print_errors() const {
 
 
 
+void PacketValidator::print_raw_packet_bytes() const {
+    const uint8_t* data = view.data;
+    size_t len = view.size();
+
+    std::cout << std::hex << std::setfill('0');
+
+    for(size_t i = 0; i < len; i++) {
+        std::cout << std::setw(2) << static_cast<int>(data[i]) << " ";
+
+        // group into rows of 16 bytes
+        if((i + 1) % 16 == 0) {
+            std::cout << std::endl;
+        }
+    }
+
+    std::cout << std::dec << std::endl;
+}
+
+
+
 bool PacketValidator::validate_ethernet(const PacketView& view, ValidationError& error) {
     if (view.size() < ETHERNET_HEADER_SIZE) {
         error = ValidationError::TOO_SMALL_FOR_ETHERNET;
         return false;
     }
 
-    // EtherType must be IPv4 for now
     uint16_t ethertype = ntohs(view.eth_layer.eth->ether_type);
-    if (ethertype != IPv4_ETHERTYPE) {
+    if (ethertype != IPv4_ETHERTYPE && ethertype != ARP_ETHERTYPE) {
         error = ValidationError::INVALID_ETHERTYPE;
         return false;
     }
@@ -253,7 +171,69 @@ bool PacketValidator::validate_ethernet(const PacketView& view, ValidationError&
 
 
 
-// Validate IPv4 header
+bool PacketValidator::validate_arp(const PacketView& view, ValidationError& error) {
+    const ARPLayer& arp_layer  = view.arp_layer;
+
+    if(view.size() < ETHERNET_HEADER_SIZE + ARP_HEADER_SIZE) {
+        error = ValidationError::ARP_TRUNCATED_HEADER;
+        return false;
+    }
+
+    uint16_t htype  = ntohs(arp_layer.arp->hardware_type);
+    if(htype != ARP_HTYPE_ETHERNET) {
+        error = ValidationError::ARP_INVALID_HTYPE;
+        return false;
+    }
+
+    uint16_t ptype  = ntohs(arp_layer.arp->protocol_type);
+    if(ptype != IPv4_ETHERTYPE) {
+        error = ValidationError::ARP_INVALID_PTYPE;
+        return false;
+    }
+
+    uint8_t hlen = arp_layer.arp->hardware_len;
+    if(hlen != ARP_HLEN_ETHERNET) {
+        error = ValidationError::ARP_INVALID_HLEN;
+        return false;
+    }
+
+    uint8_t plen = arp_layer.arp->protocol_len;
+    if(plen != 4) {
+        error = ValidationError::ARP_INVALID_PLEN;
+        return false;
+    }
+
+    uint16_t opcode = ntohs(arp_layer.arp->opcode);
+    if(opcode != ARP_OPCODE_REQUEST && opcode != ARP_OPCODE_REPLY){
+        error = ValidationError::ARP_INVALID_OPCODE;
+        return false;
+    }
+
+    size_t needed = 8 + (hlen * 2) + (plen * 2);
+    if(view.size() < ETHERNET_HEADER_SIZE + needed) {
+        error = ValidationError::ARP_TRUNCATED_ADDRESSES;
+        return false;
+    }
+
+    if (opcode == ARP_OPCODE_REPLY) {
+        const uint8_t* target_mac = arp_layer.arp->target_mac;
+        bool broadcast = true;
+        for (int i = 0; i < 6; i++)
+            if (target_mac[i] != 0xFF)
+                broadcast = false;
+
+        if (broadcast) {
+            error = ValidationError::ARP_REPLY_TO_BROADCAST;
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+
+
 bool PacketValidator::validate_ipv4(const PacketView& view, ValidationError& error) {
     const IPv4Layer& ip_layer = view.ip_layer;
 
@@ -291,7 +271,6 @@ bool PacketValidator::validate_ipv4(const PacketView& view, ValidationError& err
         return false;
     }
 
-    // Total length must not exceed actual packet size
     if(total_len > view.size() -  ETHERNET_HEADER_SIZE) {
         error = ValidationError::IPV4_TOTAL_LENGTH_EXCEEDS_PACKET;
         return false;
@@ -304,17 +283,10 @@ bool PacketValidator::validate_ipv4(const PacketView& view, ValidationError& err
     uint8_t temp[IPV4_MAX_HEADER_SIZE]; 
     memcpy(temp, ip_header, ip_header_len);
 
-    // Zeroing out checksum field
     temp[10] = 0;
     temp[11] = 0;
     uint16_t computed = compute_checksum(temp, ip_header_len);
     uint16_t received = ntohs(ip_layer.iph->header_checksum);
-
-    // FOR DEBUGGING PURPOSES
-    std::cout << "Computed IPv4 checksum = "
-          << std::hex << computed
-          << "  Received = " << received
-          << std::dec << std::endl;
 
     if (computed != received) {
         error = ValidationError::IPV4_INVALID_CHECKSUM;
@@ -323,6 +295,7 @@ bool PacketValidator::validate_ipv4(const PacketView& view, ValidationError& err
 
     return true;
 }
+
 
 
 // Validate TCP 
@@ -355,7 +328,6 @@ bool PacketValidator::validate_tcp(const PacketView& view, ValidationError& erro
     // Checksum validation for TCP
     const IPv4Header* iph = view.ip_layer.iph;
     const TCPHeader* tcph = view.tcp_layer.tcph;
-
     size_t ip_header_len = view.ip_layer.header_size();
     tcp_offset = ETHERNET_HEADER_SIZE + ip_header_len;
     size_t tcp_len = ntohs(iph->total_length) - ip_header_len;
@@ -369,21 +341,19 @@ bool PacketValidator::validate_tcp(const PacketView& view, ValidationError& erro
     pseudo[10] = (tcp_len >> 8) & 0xFF;
     pseudo[11] = tcp_len & 0xFF;
 
-    // Copy TCP header + payload
     uint8_t temp[65535];
     memcpy(temp, view.data + tcp_offset, tcp_len);
 
     // Zero checksum field
     temp[16] = 0;
     temp[17] = 0;
-
-    // Compute checksum
     uint32_t sum = 0;
     sum = compute_checksum(pseudo, 12) + compute_checksum(temp, tcp_len);
 
     // Fold carries
-    while (sum >> 16)
+    while (sum >> 16) {
         sum = (sum & 0xFFFF) + (sum >> 16);
+    }
 
     uint16_t computed = ~sum & 0xFFFF;
     uint16_t received = ntohs(tcph->checksum);
@@ -392,7 +362,6 @@ bool PacketValidator::validate_tcp(const PacketView& view, ValidationError& erro
         error = ValidationError::TCP_INVALID_CHECKSUM;
         return false;
     }
-
 
     return true;
 }
@@ -466,7 +435,6 @@ bool PacketValidator::validate_udp(const PacketView& view, ValidationError& erro
         error = ValidationError::UDP_INVALID_CHECKSUM;
         return false;
     }
-
 
     return true;
 }

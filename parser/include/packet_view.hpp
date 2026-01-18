@@ -16,8 +16,7 @@ public:
     bool has_ip;
     bool has_tcp;
     bool has_udp;
-
-    // Layer Objects
+    
     EthernetLayer eth_layer;
     ARPLayer arp_layer;
     IPv4Layer ip_layer;
@@ -40,7 +39,6 @@ public:
     size_t size() const { return length; }
 
     
-// CAN BE IGNORED FOR NOW
 private:
     void parse_layers();
 };

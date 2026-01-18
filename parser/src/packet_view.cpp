@@ -28,6 +28,7 @@ PacketView::PacketView(const uint8_t* packet, size_t length) :
     parse_layers();
 }
 
+
 // Parse Layers
 void PacketView::parse_layers() {
 
@@ -75,20 +76,18 @@ void PacketView::parse_layers() {
                 return;
             }
             tcp_layer = TCPLayer(data + l4_offset);
-has_tcp = true;
+            has_tcp = true;
 
-size_t tcp_header_len =
-    ((tcp_layer.tcph->data_offset >> 4) & 0x0F) * 4;
+            size_t tcp_header_len = ((tcp_layer.tcph->data_offset >> 4) & 0x0F) * 4;
 
-if (tcp_header_len < MINIMUM_TCP_HEADER_SIZE ||
-    l4_offset + tcp_header_len > length) {
-    payload = nullptr;
-    payload_len = 0;
-    return;
-}
+            if (tcp_header_len < MINIMUM_TCP_HEADER_SIZE || l4_offset + tcp_header_len > length) {
+                payload = nullptr;
+                payload_len = 0;
+                return;
+            }
 
-payload = data + l4_offset + tcp_header_len;
-payload_len = length - (l4_offset + tcp_header_len);
+            payload = data + l4_offset + tcp_header_len;
+            payload_len = length - (l4_offset + tcp_header_len);
        
         }
         else if(ip_layer.iph->protocol == UDP_PROTOCOL_VALUE) {
@@ -97,20 +96,19 @@ payload_len = length - (l4_offset + tcp_header_len);
                 return;
             }
             // UDP branch
-udp_layer = UDPLayer(data + l4_offset);
-has_udp = true;
+            udp_layer = UDPLayer(data + l4_offset);
+            has_udp = true;
 
-size_t udp_header_len = MINIMUM_UDP_HEADER_SIZE;
+            size_t udp_header_len = MINIMUM_UDP_HEADER_SIZE;
 
-if (l4_offset + udp_header_len > length) {
-    payload = nullptr;
-    payload_len = 0;
-    return;
-}
+            if (l4_offset + udp_header_len > length) {
+                payload = nullptr;
+                payload_len = 0;
+                return;
+            }
 
-payload = data + l4_offset + udp_header_len;
-payload_len = length - (l4_offset + udp_header_len);
-
+            payload = data + l4_offset + udp_header_len;
+            payload_len = length - (l4_offset + udp_header_len);
         }
         else {
             // Unsupported L4 Protocol
@@ -119,6 +117,8 @@ payload_len = length - (l4_offset + udp_header_len);
     }    
    
 }   
+
+
 
 // Print Packet View Details
 void PacketView::print() const {

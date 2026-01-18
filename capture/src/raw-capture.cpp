@@ -8,14 +8,6 @@
 
 SocketCapture::SocketCapture() {
     sock = create_socket();
-    /*
-    if(sock){
-        std::cout << "Socket created successfully " << std::endl;
-    }
-    else{
-        std::cout << "Unable to create socket. \n Make sure you're on Linux and that you are running DeepPacket with sudo command " std::endl;
-    }
-    */
     if (sock < 0) {
         perror("socket");
         return;

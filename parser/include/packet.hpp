@@ -3,19 +3,19 @@
 
 // LAYER 2 -> Ethernet Header
 struct EthernetHeader {
-    uint8_t dest_mac[6];  // bytes 0-5
-    uint8_t src_mac[6];   // bytes 6-11
-    uint16_t ether_type;  // bytes 12-13
+    uint8_t dest_mac[6];  
+    uint8_t src_mac[6];   
+    uint16_t ether_type;  // (0x0800, 0x0806 etc.)
 };
 
 
 // ARP header (technically both layers 2 and 3)
 struct ARPHeader {
-    uint16_t header_type; // Hardware type (1 = Ethernet)
-    uint16_t protocol_type;  //Protocol type (0x0800 etc.)
-    uint8_t header_len;
+    uint16_t hardware_type;       // Hardware type (1 -> Ethernet)
+    uint16_t protocol_type;     // (0x0800, 0x0806 etc.)
+    uint8_t hardware_len;
     uint8_t protocol_len;
-    uint16_t opcode;
+    uint16_t opcode;            // Request -> 1, Reply -> 2
     uint8_t sender_mac[6];
     uint8_t sender_ip[4];
     uint8_t target_mac[6];
@@ -32,8 +32,8 @@ struct IPv4Header {
     uint16_t identification;   // Unique ID for fragmentation
     uint16_t flags_fragment;   // Flags (3 bits) + Fragment offset (13 bits)
     uint8_t  ttl;              // Time To Live
-    uint8_t  protocol;         // Protocol number (TCP=6, UDP=17, ICMP=1)
-    uint16_t header_checksum;  // Header checksum
+    uint8_t  protocol;         // L4 Protocol number (TCP=6, UDP=17, ICMP=1)
+    uint16_t header_checksum;  
     uint32_t src_addr;         // Source IP address
     uint32_t dest_addr;         // Destination IP address
 };

@@ -4,52 +4,87 @@
 #include "raw-capture.hpp"
 
 // Sample TCP Packet (Ethernet + IPv4 + TCP Headers)
-    uint8_t sample_tcp_packet[] = {   // with no payload
-        // --- Ethernet Header (14 bytes) ---
-        0x00,0x11,0x22,0x33,0x44,0x55,   // Dest MAC
-        0x66,0x77,0x88,0x99,0xAA,0xBB,   // Src MAC
-        0x08,0x00,                        // EtherType = 0x0800 (IPv4)
+std::vector<uint8_t> tcp_valid = {
 
-        // --- IPv4 Header (20 bytes) ---
-        0x45,       // Version/IHL
-        0x00,       // DSCP/ECN
-        0x00,0x28,  // Total Length = 40 bytes
-        0x12,0x34,  // Identification
-        0x40,0x00,  // Flags/Fragment Offset (DF set)
-        0x40,       // TTL = 64
-        0x06,       // Protocol = TCP
-        0x00,0x00,  // Header Checksum
-        0xC0,0xA8,0x01,0x02,  // Src IP = 192.168.1.2
-        0xC0,0xA8,0x01,0x03,  // Dst IP = 192.168.1.3
+    // =======================
+    // ETHERNET HEADER (14 B)
+    // =======================
+    0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,   // Destination MAC
+    0x11,0x22,0x33,0x44,0x55,0x66,   // Source MAC
+    0x08,0x00,                       // EtherType = IPv4 (0x0800)
 
-        // --- TCP Header (20 bytes) ---
-        0x04,0xD2,  // Src Port = 1234
-        0x00,0x50,  // Dst Port = 80
-        0xAB,0xCD,0xEF,0xFF,  // Seq Num
-        0x00,0x00,0x00,0x00,  // Ack Num
-        0x50,       // Data Offset / Reserved
-        0x02,       // Flags = SYN
-        0x04,0x00,  // Window = 1024
-        0x00,0x00,  // Checksum
-        0x00,0x00   // Urgent pointer
-    };
+    // =======================
+    // IPv4 HEADER (20 B)
+    // =======================
+    0x45,                            // Version=4, IHL=5 (20 bytes)
+    0x00,                            // DSCP/ECN
+    0x00,0x2C,                       // Total Length = 44 bytes (20 IP + 20 TCP + 4 payload)
+    0x00,0x01,                       // Identification
+    0x00,0x00,                       // Flags + Fragment Offset
+    0x40,                            // TTL = 64
+    0x06,                            // Protocol = TCP (6)
+    0xF9,0x77,                       // IPv4 Header Checksum (VALID)
+    0xC0,0xA8,0x00,0x01,             // Source IP = 192.168.0.1
+    0xC0,0xA8,0x00,0x02,             // Destination IP = 192.168.0.2
 
-    // Sample UDP packet (Ethernet + IPv4 + UDP + payload)
-    uint8_t sample_udp_packet[] = {
-        // Ethernet (14)
-        0x00,0x11,0x22,0x33,0x44,0x55,
-        0x66,0x77,0x88,0x99,0xAA,0xBB,
-        0x08,0x00, // IPv4
+    // =======================
+    // TCP HEADER (20 B)
+    // =======================
+    0x00,0x50,                       // Source Port = 80
+    0x01,0xBB,                       // Destination Port = 443
+    0x00,0x00,0x00,0x00,             // Sequence Number
+    0x00,0x00,0x00,0x00,             // Acknowledgment Number
+    0x50,                            // Data Offset=5 (20 bytes), Reserved=0
+    0x02,                            // Flags = SYN
+    0x20,0x00,                       // Window Size
+    0x08,0x6E,                       // TCP Checksum (VALID)
+    0x00,0x00,                       // Urgent Pointer
 
-        // IPv4 (20)
-        0x45, 0x00, 0x00,0x1C, 0x12,0x34, 0x40,0x00, 0x40, 0x11,
-        0x00,0x00, 0xC0,0xA8,0x01,0x02, 0xC0,0xA8,0x01,0x03,
+    // =======================
+    // PAYLOAD (4 B)
+    // =======================
+    0x01,0x02,0x03,0x04              // Arbitrary payload
+};
+ 
 
-        // UDP (8)
-        0x1F,0x90, 0x23,0x28, 0x00,0x08, 0x12,0x34,
+// Sample UDP packet (Ethernet + IPv4 + UDP + payload)
+std::vector<uint8_t> udp_valid = {
 
-        // Payload (0 bytes)
-    };
+    // =======================
+    // ETHERNET HEADER (14 B)
+    // =======================
+    0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,   // Destination MAC
+    0x11,0x22,0x33,0x44,0x55,0x66,   // Source MAC
+    0x08,0x00,                       // EtherType = IPv4 (0x0800)
+
+    // =======================
+    // IPv4 HEADER (20 B)
+    // =======================
+    0x45,                            // Version=4, IHL=5 (20 bytes)
+    0x00,                            // DSCP/ECN
+    0x00,0x20,                       // Total Length = 32 bytes (20 IP + 8 UDP + 4 payload)
+    0x00,0x02,                       // Identification
+    0x00,0x00,                       // Flags + Fragment Offset
+    0x40,                            // TTL = 64
+    0x11,                            // Protocol = UDP (17)
+    0xF9,0x77,                       // IPv4 Header Checksum (VALID)
+    0xC0,0xA8,0x00,0x01,             // Source IP = 192.168.0.1
+    0xC0,0xA8,0x00,0x02,             // Destination IP = 192.168.0.2
+
+    // =======================
+    // UDP HEADER (8 B)
+    // =======================
+    0x13,0x89,                       // Source Port = 5001
+    0x13,0x8A,                       // Destination Port = 5002
+    0x00,0x0C,                       // Length = 12 bytes (8 header + 4 payload)
+    0x53,0x69,                       // UDP Checksum (VALID)
+
+    // =======================
+    // PAYLOAD (4 B)
+    // =======================
+    0x01,0x02,0x03,0x04              // Arbitrary payload
+};
+
 
 // SAMPLE MALFORMED PACKETS, ONE FOR EACH KIND OF ERROR:
 std::vector<std::vector<uint8_t>> malformed_packets = {
@@ -371,6 +406,56 @@ std::vector<std::vector<uint8_t>> checksum_packets = {
 };
 
 
+
+// ARP PACKETS
+std::vector<uint8_t> arp_valid_request = {
+    // Ethernet
+    0x11,0x22,0x33,0x44,0x55,0x66,
+    0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
+    0x08,0x06,
+
+    // ARP header
+    0x00,0x01,        // HTYPE = Ethernet
+    0x08,0x00,        // PTYPE = IPv4
+    0x06,             // HLEN
+    0x04,             // PLEN
+    0x00,0x01,        // Opcode = Request
+
+    // Sender MAC
+    0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
+    // Sender IP
+    0x0A,0x00,0x00,0x01,
+    // Target MAC
+    0x00,0x00,0x00,0x00,0x00,0x00,
+    // Target IP
+    0x0A,0x00,0x00,0x02
+};
+
+std::vector<uint8_t> arp_valid_reply = {
+    // Ethernet
+    0x11,0x22,0x33,0x44,0x55,0x66,
+    0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
+    0x08,0x06,
+
+    // ARP header
+    0x00,0x01,
+    0x08,0x00,
+    0x06,
+    0x04,
+    0x00,0x02,        // Opcode = Reply
+
+    // Sender MAC
+    0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
+    // Sender IP
+    0x0A,0x00,0x00,0x02,
+    // Target MAC
+    0x11,0x22,0x33,0x44,0x55,0x66,
+    // Target IP
+    0x0A,0x00,0x00,0x01
+};
+
+
+
 // BASELINE PARSING + VALIDATION CHECKS
 void baseline() {
     std::cout << "\n=== TCP PACKET PARSING  ===" << std::endl;
@@ -442,6 +527,87 @@ void checksum_test() {
 }
 
 
+
+// ARP TESTS
+void arp_tests() {
+    std::vector<std::vector<uint8_t>> arp_packets;
+    // valid arp req (ValidationError::NONE)
+    arp_packets.push_back(arp_valid_request);
+    arp_packets.push_back(arp_valid_reply);
+    std::cout << "arp_valid_request size = " << arp_valid_request.size() << "\n";
+    std::cout << "arp_valid_reply size = " << arp_valid_reply.size() << "\n";
+
+
+    // invalid htype
+    std::vector<uint8_t> arp_invalid_htype = arp_valid_request;
+    arp_invalid_htype[14] = 0x00;
+    arp_invalid_htype[15] = 0x02;   // HTYPE = 2 (not Ethernet)
+    arp_packets.push_back(arp_invalid_htype);
+
+    // invalid ptype
+    std::vector<uint8_t> arp_invalid_ptype = arp_valid_request;
+    arp_invalid_ptype[16] = 0x12;
+    arp_invalid_ptype[17] = 0x34;   // PTYPE = 0x1234
+    arp_packets.push_back(arp_invalid_ptype);
+
+    // invalid hlen
+    std::vector<uint8_t> arp_invalid_hlen = arp_valid_request;
+    arp_invalid_hlen[18] = 0x05;    // HLEN = 5 (should be 6)
+    arp_packets.push_back(arp_invalid_hlen);
+
+    // invalid plen
+    std::vector<uint8_t> arp_invalid_plen = arp_valid_request;
+    arp_invalid_plen[19] = 0x05;    // PLEN = 5 (should be 4)
+    arp_packets.push_back(arp_invalid_plen);
+
+    // invalid opcode
+    std::vector<uint8_t> arp_invalid_opcode = arp_valid_request;
+    arp_invalid_opcode[20] = 0x12;
+    arp_invalid_opcode[21] = 0x34;  // Opcode = 0x1234
+    arp_packets.push_back(arp_invalid_opcode);
+
+    // truncated header
+    std::vector<uint8_t> arp_truncated_header = {
+        0x11,0x22,0x33,0x44,0x55,0x66,
+        0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
+        0x08,0x06,
+        0x00,0x01,0x08,0x00 // stops early
+    };
+    arp_packets.push_back(arp_truncated_header);
+
+    // truncated addresses
+    std::vector<uint8_t> arp_truncated_addresses = arp_valid_request;
+
+    size_t arp_offset = 14; // 14
+    size_t target_mac_offset = arp_offset + offsetof(ARPHeader, target_mac);
+    size_t cut = target_mac_offset + 2;
+    arp_truncated_addresses.resize(cut);
+    arp_packets.push_back(arp_truncated_addresses);
+
+
+
+    // reply to broadcast
+    std::vector<uint8_t> arp_reply_broadcast = arp_valid_reply;
+    for (int i = 0; i < 6; i++) {
+        arp_reply_broadcast[32 + i] = 0xFF;  // target MAC = FF:FF:FF:FF:FF:FF
+    }
+    arp_packets.push_back(arp_reply_broadcast);
+
+    std::cout << "\nARP PACKET TESTS\n"  << std::endl;
+    for(size_t i = 0; i < arp_packets.size(); i++) {
+        std::cout << "\n=== Test " << i << " ===" << std::endl;
+        ParsedPacket packet = parse_packet(std::span<const uint8_t>(arp_packets[i]));
+        packet.view.print();
+        std::cout << "\n=== Validation for  packet " << i << " ===" << std::endl;
+        PacketValidator packet_validator(packet.view);
+        packet_validator.print_errors();
+        std::cout << "\n============================\n" <<std::endl;
+    }
+
+}
+
+
+
 // RAW CAPTURE TEST
 int raw_capture_test(){
     SocketCapture capture;
@@ -483,11 +649,70 @@ int raw_capture_test(){
 }
 
 
+void run_ethernet_tests() {
+    std::vector<std::pair<std::vector<uint8_t>, ValidationError>> tests;
+    ostringstream oss;
+
+    // valid ethernet
+    tests.push_back({tcp_valid, ValidationError::NONE});
+
+    // invalid ethertype
+    std::vector<uint8_t> invalid_ethertype_packet = tcp_valid;
+    invalid_ethertype_packet[12] = 0x12;
+    invalid_ethertype_packet[13] = 0x34;
+    tests.push_back({invalid_ethertype_packet, ValidationError::INVALID_ETHERTYPE});
+
+    // ethernet too small
+    std::vector<uint8_t> too_small = {0x00, 0x01, 0x02};
+    tests.push_back({too_small, ValidationError::TOO_SMALL_FOR_ETHERNET});
+
+    oss << "\n==== ARP TESTS ====\n"  << std::endl;
+    for(size_t i = 0; i < tests.size(); i++) {
+        oss << "\n=== Test " << i + 1 << " ===" << std::endl;
+        std::vector<uint8_t> packet = tests[i].first;
+        ValidationError err = tests[i].second;
+        ParsedPacket packet = parse_packet(std::span<const uint8_t>(packet));
+        packet.view.print();
+        std::cout << "\n=== Validation for  packet " << i << " ===" << std::endl;
+        PacketValidator packet_validator(packet.view);
+        packet_validator.print_errors();
+        std::cout << "\n============================\n" <<std::endl;
+    }
+    std::cout << oss.str() << std::endl;
+}
+
+void run_arp_tests() {
+    ostringstream oss;
+    std::cout << oss.str() << std::endl;
+}
+
+void run_ipv4_tests() {
+    ostringstream oss;
+    std::cout << oss.str() << std::endl;
+}
+
+void run_tcp_tests() {
+    ostringstream oss;
+    std::cout << oss.str() << std::endl;
+}
+
+void run_udp_tests() {
+    ostringstream oss;
+    std::cout << oss.str() << std::endl;
+}
 
 int main() {
 
-    checksum_test();
-    // baseline();
+    run_ethernet_tests();
+    run_arp_tests();
+    run_ipv4_tests();
+    run_tcp_tests();
+    run_udp_tests();
+    // run_icmp_tests();
+    // baseline(); -> Depracated must fix checksums
+    // checksum_test();
+
+    // arp_tests();
 
     /* RAW CAPTURE TEST
     int res = raw_capture_test();    

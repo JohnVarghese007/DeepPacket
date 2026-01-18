@@ -13,10 +13,7 @@ class EthernetLayer {
 public: 
     const EthernetHeader *eth;
 
-    // Default Constructor
     EthernetLayer() : eth(nullptr) {}
-
-    // EthernetLayer Constructor
     EthernetLayer(const uint8_t* packet); 
 
     void print() const;
@@ -32,10 +29,7 @@ class ARPLayer {
 public:
     const ARPHeader *arp;
 
-    // Default Constructor
     ARPLayer() : arp(nullptr) {}
-
-    // ARPLayer Constructor
     ARPLayer(const uint8_t* packet);
 
     void print() const;
@@ -52,9 +46,7 @@ class IPv4Layer {
 public:
     const IPv4Header *iph;
 
-    // Default Constructor
     IPv4Layer() : iph(nullptr) {}
-    // IPv4Layer Constructor
     IPv4Layer(const uint8_t *packet);
 
     void print() const;
@@ -70,10 +62,7 @@ class TCPLayer {
 public:
     const TCPHeader *tcph;
 
-    // Default Constructor
     TCPLayer() : tcph(nullptr) {}
-
-    // TCPLayer Constructor
     TCPLayer(const uint8_t *packet);
 
     void print() const;
@@ -89,14 +78,10 @@ class UDPLayer {
 public:
     const UDPHeader *udph;
 
-    // Default Constructor
     UDPLayer() : udph(nullptr) {}
-    
-    //UDPLayer Constructor
     UDPLayer(const uint8_t *packet);
 
     void print() const;
-
     size_t header_size() const;
 
 };
