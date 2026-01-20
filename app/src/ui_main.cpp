@@ -4,7 +4,7 @@
 #include <GLFW/glfw3.h>
 
 #include <chrono>
-#include  <ctime>
+#include <ctime>
 
 #include <vector>
 #include <string>
@@ -63,7 +63,6 @@ int main() {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
-    // Start/stop button to determine capture state
     SocketCapture capture;
     bool capturing = false;
 
@@ -72,7 +71,6 @@ int main() {
 
     std::vector<RowData> rows;
 
-    // Main loop
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         ImGui_ImplOpenGL3_NewFrame();
@@ -88,7 +86,6 @@ int main() {
                      ImGuiWindowFlags_NoMove |
                      ImGuiWindowFlags_NoCollapse);
 
-        // Start/Stop button
         if (ImGui::Button(capturing ? "Stop Capture" : "Start Capture")) {
             capturing = !capturing;
         }
@@ -100,27 +97,18 @@ int main() {
             ssize_t bytes = capture.read_frame(buffer.data(), buffer.size());
 
             if (bytes > 0) {
-                // Parse packet
                 ParsedPacket pkt = parse_packet(
                     std::span<const uint8_t>(buffer.data(), bytes)
                 );
 
-                // Capture printed parser output
-                std::stringstream parser_ss;
-                {
-                    std::streambuf* old = std::cout.rdbuf(parser_ss.rdbuf());
-                    pkt.view.print();
-                    std::cout.rdbuf(old);
-                }
+                // Capture parser output
+                std::ostringstream parser_ss;
+                pkt.view.print(parser_ss);
 
-                // Capture printed validation output
+                // Capture validation output
                 PacketValidator validator(pkt.view);
-                std::stringstream val_ss;
-                {
-                    std::streambuf* old = std::cout.rdbuf(val_ss.rdbuf());
-                    validator.print_errors();
-                    std::cout.rdbuf(old);
-                }
+                std::ostringstream val_ss;
+                validator.print_errors(val_ss);
 
                 rows.push_back({
                     now_timestamp(),
@@ -145,9 +133,14 @@ int main() {
             for (auto& row : rows) {
                 ImGui::TableNextRow();
 
-                ImGui::TableNextColumn(); ImGui::Text("%s", row.timestamp.c_str());
-                ImGui::TableNextColumn(); ImGui::TextWrapped("%s", row.parsed_output.c_str());
-                ImGui::TableNextColumn(); ImGui::TextWrapped("%s", row.validation_output.c_str());
+                ImGui::TableNextColumn();
+                ImGui::Text("%s", row.timestamp.c_str());
+
+                ImGui::TableNextColumn();
+                ImGui::TextWrapped("%s", row.parsed_output.c_str());
+
+                ImGui::TableNextColumn();
+                ImGui::TextWrapped("%s", row.validation_output.c_str());
             }
 
             ImGui::EndTable();
@@ -155,7 +148,6 @@ int main() {
 
         ImGui::End();
 
-        // Render
         ImGui::Render();
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
@@ -165,7 +157,6 @@ int main() {
         glfwSwapBuffers(window);
     }
 
-    // Cleanup
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();

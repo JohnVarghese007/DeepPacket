@@ -13,13 +13,14 @@
 - Live packet capture using Linux sockets
 - Zero-copy parsing + Validation pipeline that currently supports the following:
     - IPv4
+    - ARP
     - TCP
     - UDP
 - Very very minimal GUI with working start/stop capture
 - Real time display of parsed packet fields with validation results
 
 ### Planned Features:
-- IPv6/ARP support yet to be added to parser + validation which is literally most of the traffic
+- IPv6 support yet to be added to parser + validation which is literally most of the traffic
 - Other protocols may be optionally added
 - More polish for GUI
 

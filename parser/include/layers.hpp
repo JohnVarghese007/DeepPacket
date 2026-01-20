@@ -16,11 +16,11 @@ public:
     EthernetLayer() : eth(nullptr) {}
     EthernetLayer(const uint8_t* packet); 
 
-    void print() const;
+    void print(std::ostream& os) const;
     size_t header_size() const;
 
 private:
-    static std::string print_mac(const uint8_t *mac);
+    static void print_mac(const uint8_t *mac, std::ostream& os);
 };
 
 
@@ -32,12 +32,12 @@ public:
     ARPLayer() : arp(nullptr) {}
     ARPLayer(const uint8_t* packet);
 
-    void print() const;
+    void print(std::ostream& os) const;
     size_t header_size() const;
 
 private:
-    static std::string print_mac(const uint8_t *mac);
-    static std::string print_ip(const uint32_t ip);
+    static void print_mac(const uint8_t *mac, std::ostream& os);
+    static void print_ip(const uint32_t ip, std::ostream& os);
 };
 
 
@@ -49,11 +49,11 @@ public:
     IPv4Layer() : iph(nullptr) {}
     IPv4Layer(const uint8_t *packet);
 
-    void print() const;
+    void print(std::ostream& os) const;
     size_t header_size() const;
 
 private:
-    static std::string print_ip(uint32_t ip);
+    static void print_ip(uint32_t ip, std::ostream& os);
 };
 
 
@@ -65,7 +65,7 @@ public:
     TCPLayer() : tcph(nullptr) {}
     TCPLayer(const uint8_t *packet);
 
-    void print() const;
+    void print(std::ostream& os) const;
     size_t header_size() const;
 
 private:
@@ -81,7 +81,7 @@ public:
     UDPLayer() : udph(nullptr) {}
     UDPLayer(const uint8_t *packet);
 
-    void print() const;
+    void print(std::ostream& os) const;
     size_t header_size() const;
 
 };

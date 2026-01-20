@@ -1,7 +1,12 @@
 #include <iostream>
+#include <iomanip>
+#include <sstream>
 #include "parser.hpp"
 #include "validation.hpp"
 #include "raw-capture.hpp"
+#include "packet_builder.hpp"
+
+
 
 // Sample TCP Packet (Ethernet + IPv4 + TCP Headers)
 std::vector<uint8_t> tcp_valid = {
@@ -37,7 +42,7 @@ std::vector<uint8_t> tcp_valid = {
     0x50,                            // Data Offset=5 (20 bytes), Reserved=0
     0x02,                            // Flags = SYN
     0x20,0x00,                       // Window Size
-    0x08,0x6E,                       // TCP Checksum (VALID)
+    0xF7,0x85,                       // TCP Checksum (VALID)
     0x00,0x00,                       // Urgent Pointer
 
     // =======================
@@ -46,6 +51,7 @@ std::vector<uint8_t> tcp_valid = {
     0x01,0x02,0x03,0x04              // Arbitrary payload
 };
  
+
 
 // Sample UDP packet (Ethernet + IPv4 + UDP + payload)
 std::vector<uint8_t> udp_valid = {
@@ -77,7 +83,7 @@ std::vector<uint8_t> udp_valid = {
     0x13,0x89,                       // Source Port = 5001
     0x13,0x8A,                       // Destination Port = 5002
     0x00,0x0C,                       // Length = 12 bytes (8 header + 4 payload)
-    0x53,0x69,                       // UDP Checksum (VALID)
+    0xAC,0x96,                       // UDP Checksum (VALID)
 
     // =======================
     // PAYLOAD (4 B)
@@ -86,485 +92,151 @@ std::vector<uint8_t> udp_valid = {
 };
 
 
-// SAMPLE MALFORMED PACKETS, ONE FOR EACH KIND OF ERROR:
-std::vector<std::vector<uint8_t>> malformed_packets = {
 
-    // 0. TOO_SMALL_FOR_ETHERNET (<14 bytes)
-    {
-        0x00, 0x01, 0x02
-    },
-
-    // 1. INVALID_ETHERTYPE (EtherType != 0x0800)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x12,0x34
-    },
-
-    // 2. MISSING_IPV4_HEADER (EtherType OK, but <1 byte of IPv4)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00
-        // No IPv4 bytes
-    },
-
-    // 3. TOO_SMALL_FOR_IPV4 (<14+20 bytes)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        // Only 10 bytes of IPv4
-        1,2,3,4,5,6,7,8,9,10
-    },
-
-    // 4. INVALID_IPV4_VERSION (version=6, full IPv4 header present)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        // IPv4 header (20 bytes)
-        0x60,0x00,0x00,0x28, 0,0,0,0, 64,6,
-        0,0,0,0,0,0,0,0,0,0
-    },
-
-    // 5. INVALID_IPV4_IHL (ihl < 5)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        // version=4, ihl=1
-        0x41,0x00,0x00,0x28, 0,0,0,0, 64,6,
-        0,0,0,0,0,0,0,0,0,0
-    },
-
-    // 6. INVALID_IPV4_IHL_LENGTH (ihl=6 → 24 bytes needed, only 20 provided)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        // version=4, ihl=6
-        0x46,0x00,0x00,0x40, 0,0,0,0, 64,6,
-        // Only 20 bytes of IPv4 header present
-        0,0,0,0,0,0,0,0,0,0,
-        // Missing extra 4 bytes required by ihl=6
-    },
-
-    // 7. INVALID_IPV4_TOTAL_LENGTH (total_length < header_length)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        // total_length = 16 < 20 header
-        0x45,0x00,0x00,0x10, 0,0,0,0, 64,6,
-        0,0,0,0,0,0,0,0,0,0
-    },
-
-    // 8. IPV4_TOTAL_LENGTH_EXCEEDS_PACKET
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        // total_length = 255 > actual bytes
-        0x45,0x00,0x00,0xFF, 0,0,0,0, 64,6,
-        0,0,0,0,0,0,0,0,0,0
-    },
-
-    // 9. MISSING_TCP_HEADER (strict A1: total_length=20 → no TCP bytes)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        // IPv4: total_length=20, protocol=6
-        0x45,0x00,0x00,0x14, 0,0,0,0, 64,6,
-        0,0,0,0,0,0,0,0,0,0
-        // No TCP bytes
-    },
-
-    // 10. TOO_SMALL_FOR_TCP (<20 bytes of TCP header)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        // total_length = 30 (20 IP + 10 TCP)
-        0x45,0x00,0x00,0x1E, 0,0,0,0, 64,6,
-        0,0,0,0,0,0,0,0,0,0,
-        // 10 bytes of TCP
-        0,0,0,0,0,0,0,0,0,0
-    },
-
-    // TCP_HEADER_EXCEEDS_PACKET (valid IPv4, valid TCP offset, header too short)
-{
-    // Ethernet (14 bytes)
-    0,0,0,0,0,0, 0,0,0,0,0,0,
-    0x08,0x00,
-
-    // IPv4 header (20 bytes)
-    // version=4, ihl=5, total_length=40 (20 IP + 20 TCP), protocol=6
-    0x45,0x00, 0x00,0x28,   // total_length = 40
-    0x00,0x00, 0x00,0x00,
-    64, 6,                 // TTL=64, protocol=TCP
-    0x00,0x00,             // checksum
-    0,0,0,0,               // src IP
-    0,0,0,0,               // dst IP
-
-    // TCP header start (20 bytes provided)
-    0x00,0x50,             // src port
-    0x01,0xBB,             // dst port
-    0x00,0x00,0x00,0x00,   // seq num
-    0x00,0x00,0x00,0x00,   // ack num
-
-    // data_offset = 8 (32 bytes required)
-    0x80,                  // data_offset = 8
-    0x00,                  // flags
-
-    // remaining TCP bytes (to reach 20 total)
-    0x00,0x00,             // window
-    0x00,0x00,             // checksum
-    0x00,0x00              // urgent pointer
-}
-,
-
-
-    // 12. INVALID_TCP_DATA_OFFSET (offset=15 → 60 bytes needed)
-    {
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        0x45,0x00,0x00,0x28, 0,0,0,0, 64,6,
-        0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0, 0,0,0,0,
-        0xF0,
-        0x00,
-        0,0,0,0,0,0,0,0,0,0
-    },
-
-
-    // 13. MISSING_UDP_HEADER (strict A1: total_length=20 → no UDP bytes)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        // IPv4: total_length=20, protocol=17
-        0x45,0x00,0x00,0x14, 0,0,0,0, 64,17,
-        0,0,0,0,0,0,0,0,0,0
-        // No UDP bytes
-    },
-
-    // 14. TOO_SMALL_FOR_UDP (<8 bytes)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        // total_length = 26 (20 IP + 6 UDP)
-        0x45,0x00,0x00,0x1A, 0,0,0,0, 64,17,
-        0,0,0,0,0,0,0,0,0,0,
-        // 6 bytes of UDP
-        0,0,0,0,0,0
-    },
-
-    // 15. INVALID_UDP_LENGTH (udp_len < 8)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        // total_length = 28 (20 IP + 8 UDP)
-        0x45,0x00,0x00,0x1C, 0,0,0,0, 64,17,
-        0,0,0,0,0,0,0,0,0,0,
-        // UDP header: length = 4
-        0x00,0x00, 0x00,0x00, 0x00,0x04, 0x00,0x00
-    },
-
-    // 16. UDP_LENGTH_EXCEEDS_PACKET (udp_len > actual bytes)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        // total_length = 28 (20 IP + 8 UDP)
-        0x45,0x00,0x00,0x1C, 0,0,0,0, 64,17,
-        0,0,0,0,0,0,0,0,0,0,
-        // UDP header: length = 32 (> 8 bytes available)
-        0x00,0x00, 0x00,0x00, 0x00,0x20, 0x00,0x00
-    },
-
-    // 17. UNSUPPORTED_L4_PROTOCOL (protocol = 99)
-    {
-        // Ethernet
-        0,0,0,0,0,0, 0,0,0,0,0,0,
-        0x08,0x00,
-        // IPv4: total_length=20, protocol=99
-        0x45,0x00,0x00,0x14, 0,0,0,0, 64,99,
-        0,0,0,0,0,0,0,0,0,0
-    }
-};
-
-std::vector<std::string> expected_errors = {
-    "TOO_SMALL_FOR_ETHERNET",
-    "INVALID_ETHERTYPE",
-    "MISSING_IPV4_HEADER",
-    "TOO_SMALL_FOR_IPV4",
-    "INVALID_IPV4_VERSION",
-    "INVALID_IPV4_IHL",
-    "INVALID_IPV4_IHL_LENGTH",
-    "INVALID_IPV4_TOTAL_LENGTH",
-    "IPV4_TOTAL_LENGTH_EXCEEDS_PACKET",
-    "MISSING_TCP_HEADER",
-    "TOO_SMALL_FOR_TCP",
-    "TCP_HEADER_EXCEEDS_PACKET",   // <-- swapped
-    "INVALID_TCP_DATA_OFFSET",
-    "MISSING_UDP_HEADER",
-    "TOO_SMALL_FOR_UDP",
-    "INVALID_UDP_LENGTH",
-    "UDP_LENGTH_EXCEEDS_PACKET",
-    "UNSUPPORTED_L4_PROTOCOL"
-};
-
-
-// SAMPLE  CHECKSUM PACKETS, ONE FOR EACH KIND OF ERROR:
-std::vector<std::vector<uint8_t>> checksum_packets = {
-
-    // 0. VALID TCP
-    {
-        0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
-        0x11,0x22,0x33,0x44,0x55,0x66,
-        0x08,0x00,
-
-        0x45,0x00,0x00,0x2C,
-        0x00,0x01,0x00,0x00,
-        0x40,0x06,0xF9,0x77,   // FIXED IPv4 checksum 0x40,0x06,0xF9,0x77,
-        0xC0,0xA8,0x00,0x01,
-        0xC0,0xA8,0x00,0x02,
-
-        0x00,0x50,0x01,0xBB,
-        0x00,0x00,0x00,0x00,
-        0x00,0x00,0x00,0x00,
-        0x50,0x02,0x20,0x00,
-        0x08,0x6E,             // FIXED TCP checksum
-        0x00,0x00,
-
-        0x01,0x02,0x03,0x04
-    },
-
-    // 1. INVALID TCP
-    {
-        0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
-        0x11,0x22,0x33,0x44,0x55,0x66,
-        0x08,0x00,
-
-        0x45,0x00,0x00,0x2C,
-        0x00,0x01,0x00,0x00,
-        0x40,0x06,0xF9,0x77,   // FIXED IPv4 checksum
-        0xC0,0xA8,0x00,0x01,
-        0xC0,0xA8,0x00,0x02,
-
-        0x00,0x50,0x01,0xBB,
-        0x00,0x00,0x00,0x00,
-        0x00,0x00,0x00,0x00,
-        0x50,0x02,0x20,0x00,
-        0x00,0x00,             // BAD TCP checksum
-        0x00,0x00,
-
-        0x01,0x02,0x03,0x04
-    },
-
-    // 2. VALID UDP
-    {
-        0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
-        0x11,0x22,0x33,0x44,0x55,0x66,
-        0x08,0x00,
-
-        0x45,0x00,0x00,0x20,
-        0x00,0x02,0x00,0x00,
-        0x40,0x11,0xF9,0x77,   // FIXED IPv4 checksum 0x40,0x11,0xF9,0x77,
-        0xC0,0xA8,0x00,0x01,
-        0xC0,0xA8,0x00,0x02,
-
-        0x13,0x89,0x13,0x8A,
-        0x00,0x0C,
-        0x53,0x69,             // VALID UDP checksum
-
-        0x01,0x02,0x03,0x04
-    },
-
-    // 3. INVALID UDP
-    {
-        0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
-        0x11,0x22,0x33,0x44,0x55,0x66,
-        0x08,0x00,
-
-        0x45,0x00,0x00,0x20,
-        0x00,0x02,0x00,0x00,
-        0x40,0x11,0xF9,0x77,   // FIXED IPv4 checksum
-        0xC0,0xA8,0x00,0x01,
-        0xC0,0xA8,0x00,0x02,
-
-        0x13,0x89,0x13,0x8A,
-        0x00,0x0C,
-        0x00,0x00,             // BAD UDP checksum
-
-        0x01,0x02,0x03,0x04
-    }
-};
-
-
-
-// ARP PACKETS
-std::vector<uint8_t> arp_valid_request = {
-    // Ethernet
-    0x11,0x22,0x33,0x44,0x55,0x66,
-    0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
-    0x08,0x06,
-
-    // ARP header
-    0x00,0x01,        // HTYPE = Ethernet
-    0x08,0x00,        // PTYPE = IPv4
-    0x06,             // HLEN
-    0x04,             // PLEN
-    0x00,0x01,        // Opcode = Request
-
-    // Sender MAC
-    0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
-    // Sender IP
-    0x0A,0x00,0x00,0x01,
-    // Target MAC
-    0x00,0x00,0x00,0x00,0x00,0x00,
-    // Target IP
-    0x0A,0x00,0x00,0x02
-};
-
-std::vector<uint8_t> arp_valid_reply = {
-    // Ethernet
-    0x11,0x22,0x33,0x44,0x55,0x66,
-    0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
-    0x08,0x06,
-
-    // ARP header
-    0x00,0x01,
-    0x08,0x00,
-    0x06,
-    0x04,
-    0x00,0x02,        // Opcode = Reply
-
-    // Sender MAC
-    0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
-    // Sender IP
-    0x0A,0x00,0x00,0x02,
-    // Target MAC
-    0x11,0x22,0x33,0x44,0x55,0x66,
-    // Target IP
-    0x0A,0x00,0x00,0x01
-};
-
-
-
-// BASELINE PARSING + VALIDATION CHECKS
-void baseline() {
-    std::cout << "\n=== TCP PACKET PARSING  ===" << std::endl;
-    ParsedPacket tcp = parse_packet(std::span<const uint8_t>(sample_tcp_packet));
-    tcp.view.print();
-    std::cout << "\n=== Validation for TCP packet  ===" << std::endl;
-    PacketValidator tcp_validator(tcp.view);
-    tcp_validator.print_errors();
-    std::cout << "\n============================\n" <<std::endl;
-
-    std::cout << "\n=== UDP PACKET PARSING ===" << std::endl;
-    ParsedPacket udp = parse_packet(std::span<const uint8_t>(sample_udp_packet));
-    udp.view.print();
-    std::cout << "\n=== Validation for UDP packet  ===" << std::endl;
-    PacketValidator udp_validator(udp.view);
-    udp_validator.print_errors();
-    std::cout << "\n============================\n" <<std::endl;
-
-    std::cout << "\n=== MALFORMED PACKET TESTS ===" << std::endl;
-    for(size_t i = 0; i < malformed_packets.size(); i++) {
-        std::cout << " Malformed Packet Test: " << i << " " << std::endl;
-        ParsedPacket packet = parse_packet(std::span<const uint8_t>(malformed_packets[i]));
-        packet.view.print();
-        std::cout << "\n=== Validation for malformed packet " << i << " ===" << std::endl;
-        std::cout << "\nExpected error: " << expected_errors[i] << " \n" << std::endl;
-        PacketValidator validator(packet.view);
-        validator.print_errors();
-    }
-    std::cout << "\n============================\n" <<std::endl;
-}
-
-
-// CHECKSUM TESTS
-void checksum_test() {
-    std::cout << "\n=== MALFORMED PACKET TESTS FOR CHECKSUM ===" << std::endl;
-    for(size_t i = 0; i < checksum_packets.size(); i++) {
-        std::cout << " Malformed Packet Test: " << i << " " << std::endl;
-
-        // Print raw IPv4 checksum bytes from the vector
-        std::cout << "Vector IPv4 checksum bytes: "
-              << std::hex
-              << (int)checksum_packets[i][14 + 10] << " "
-              << (int)checksum_packets[i][14 + 11]
-              << std::dec << std::endl;
-
-        ParsedPacket packet = parse_packet(std::span<const uint8_t>(checksum_packets[i]));
-
-        packet.view.print();
-
-        // Print raw IPv4 checksum bytes actually parsed
-        if (packet.view.has_ip) {
-            const IPv4Header* iph = packet.view.ip_layer.iph;
-            std::cout << "Parsed IPv4 checksum bytes: "
-                  << std::hex
-                  << ((iph->header_checksum >> 8) & 0xFF) << " "
-                  << (iph->header_checksum & 0xFF)
-                  << std::dec << std::endl;
-        }
-
-        std::cout << "\n=== Validation for malformed packet " << i << " ===" << std::endl;    
-        PacketValidator validator(packet.view);
-        validator.print_errors();
-
-        std::cout << "----------------------------------------\n";
-    }
-
-    std::cout << "\n============================\n" <<std::endl;
+void run_single_test(std::ostringstream& oss, int test_no, const std::vector<uint8_t>& packet, ValidationError expected) {
+    ParsedPacket parsed = parse_packet(std::span<const uint8_t>(packet));
+    PacketValidator validator(parsed.view);
+
+    // Not needed for summary table, maybe can add an explicit flag or smth for this
+    // validator.print_errors(oss);
+
+    // Determine received error
+    ValidationError received = validator.errors.empty() ? ValidationError::NONE : validator.errors[0];
+    bool pass = (received == expected);
+
+    // Wider columns for long strings
+    oss << std::left
+        << std::setw(8)   << test_no
+        << std::setw(40)  << to_string(expected)
+        << std::setw(40)  << to_string(received)
+        << (pass ? "PASS" : "FAIL")
+        << "\n";
 
 }
 
 
 
-// ARP TESTS
-void arp_tests() {
-    std::vector<std::vector<uint8_t>> arp_packets;
-    // valid arp req (ValidationError::NONE)
-    arp_packets.push_back(arp_valid_request);
-    arp_packets.push_back(arp_valid_reply);
-    std::cout << "arp_valid_request size = " << arp_valid_request.size() << "\n";
-    std::cout << "arp_valid_reply size = " << arp_valid_reply.size() << "\n";
+void run_ethernet_tests() {
+    std::vector<std::pair<std::vector<uint8_t>, ValidationError>> tests;
+    std::ostringstream oss;
+
+    // Build valid packet using PacketBuilder
+    uint8_t src_mac[6] = {0x11,0x22,0x33,0x44,0x55,0x66};
+    uint8_t dst_mac[6] = {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF};
+
+    uint8_t src_ip[4] = {192,168,0,1};
+    uint8_t dst_ip[4] = {192,168,0,2};
+
+    std::vector<uint8_t> tcp_valid_packet =
+        PacketBuilder::build_tcp_packet(
+            src_mac,
+            dst_mac,
+            src_ip,
+            dst_ip,
+            80,                     // src port
+            443,                    // dest port
+            {0x01,0x02,0x03,0x04}   // payload
+        );
+
+
+    // valid tcp packet
+    tests.push_back({tcp_valid_packet, ValidationError::NONE});
+
+    // invalid ethertype
+    std::vector<uint8_t> invalid_ethertype = tcp_valid_packet;
+    invalid_ethertype[12] = 0x12;
+    invalid_ethertype[13] = 0x34;
+    tests.push_back({invalid_ethertype, ValidationError::INVALID_ETHERTYPE});
+
+    // too small for ethernet
+    std::vector<uint8_t> too_small = {0x00, 0x01, 0x02};
+    tests.push_back({too_small, ValidationError::TOO_SMALL_FOR_ETHERNET});
+
+
+    oss << "\n==== ETHERNET TESTS ====\n" << std::endl;
+
+    // table header
+    oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result" << "\n";
+    oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
+
+
+    for (size_t i = 0; i < tests.size(); i++)    {
+        run_single_test(oss, static_cast<int>(i + 1), tests[i].first, tests[i].second);
+    }
+
+    oss << "\n=======================\n" << std::endl;
+    std::cout << oss.str();
+}
+
+
+
+void run_arp_tests() {
+    std::vector<std::pair<std::vector<uint8_t>, ValidationError>> tests;
+    std::ostringstream oss;
+
+    // Build valid reply packet using PacketBuilder
+    // Example MAC/IPs
+    uint8_t src_mac[6]     = {0x11,0x22,0x33,0x44,0x55,0x66};
+    uint8_t dst_mac_req[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}; // broadcast for request
+    uint8_t dst_mac_rep[6] = {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF}; // target MAC for reply
+
+    uint8_t sender_ip[4]   = {192,168,0,1};
+    uint8_t target_ip[4]   = {192,168,0,2};
+
+    uint8_t zero_mac[6]    = {0,0,0,0,0,0};
+
+    // --- Valid ARP Request (who-has 192.168.0.2?) ---
+    std::vector<uint8_t> arp_request = PacketBuilder::build_arp_packet(
+        src_mac,            // Ethernet src
+        dst_mac_req,        // Ethernet dst (broadcast)
+        src_mac,            // Sender MAC
+        sender_ip,          // Sender IP
+        zero_mac,           // Target MAC (unknown)
+        target_ip,          // Target IP
+        1                   // Opcode = request
+    );
+    tests.push_back({arp_request, ValidationError::NONE});
+
+    // --- Valid ARP Reply (192.168.0.2 is at AA:BB:CC:DD:EE:FF) ---
+    std::vector<uint8_t> arp_reply = PacketBuilder::build_arp_packet(
+        dst_mac_rep,        // Ethernet src (the replier)
+        src_mac,            // Ethernet dst (the original requester)
+        dst_mac_rep,        // Sender MAC (the replier’s MAC)
+        target_ip,          // Sender IP (192.168.0.2)
+        src_mac,            // Target MAC (the requester’s MAC)
+        sender_ip,          // Target IP (192.168.0.1)
+        2                   // Opcode = reply
+    );
+    tests.push_back({arp_reply, ValidationError::NONE});
 
 
     // invalid htype
-    std::vector<uint8_t> arp_invalid_htype = arp_valid_request;
+    std::vector<uint8_t> arp_invalid_htype = arp_request;
     arp_invalid_htype[14] = 0x00;
     arp_invalid_htype[15] = 0x02;   // HTYPE = 2 (not Ethernet)
-    arp_packets.push_back(arp_invalid_htype);
+    tests.push_back({arp_invalid_htype, ValidationError::ARP_INVALID_HTYPE});
 
     // invalid ptype
-    std::vector<uint8_t> arp_invalid_ptype = arp_valid_request;
+    std::vector<uint8_t> arp_invalid_ptype = arp_request;
     arp_invalid_ptype[16] = 0x12;
     arp_invalid_ptype[17] = 0x34;   // PTYPE = 0x1234
-    arp_packets.push_back(arp_invalid_ptype);
+    tests.push_back({arp_invalid_ptype, ValidationError::ARP_INVALID_PTYPE});
 
     // invalid hlen
-    std::vector<uint8_t> arp_invalid_hlen = arp_valid_request;
+    std::vector<uint8_t> arp_invalid_hlen = arp_request;
     arp_invalid_hlen[18] = 0x05;    // HLEN = 5 (should be 6)
-    arp_packets.push_back(arp_invalid_hlen);
+    tests.push_back({arp_invalid_hlen, ValidationError::ARP_INVALID_HLEN});
 
     // invalid plen
-    std::vector<uint8_t> arp_invalid_plen = arp_valid_request;
+    std::vector<uint8_t> arp_invalid_plen = arp_request;
     arp_invalid_plen[19] = 0x05;    // PLEN = 5 (should be 4)
-    arp_packets.push_back(arp_invalid_plen);
+    tests.push_back({arp_invalid_plen, ValidationError::ARP_INVALID_PLEN});
 
     // invalid opcode
-    std::vector<uint8_t> arp_invalid_opcode = arp_valid_request;
+    std::vector<uint8_t> arp_invalid_opcode = arp_request;
     arp_invalid_opcode[20] = 0x12;
     arp_invalid_opcode[21] = 0x34;  // Opcode = 0x1234
-    arp_packets.push_back(arp_invalid_opcode);
+    tests.push_back({arp_invalid_opcode, ValidationError::ARP_INVALID_OPCODE});
 
     // truncated header
     std::vector<uint8_t> arp_truncated_header = {
@@ -573,41 +245,338 @@ void arp_tests() {
         0x08,0x06,
         0x00,0x01,0x08,0x00 // stops early
     };
-    arp_packets.push_back(arp_truncated_header);
+    tests.push_back({arp_truncated_header, ValidationError::ARP_TRUNCATED_HEADER});
 
     // truncated addresses
-    std::vector<uint8_t> arp_truncated_addresses = arp_valid_request;
+    std::vector<uint8_t> arp_truncated_addresses = arp_request;
 
     size_t arp_offset = 14; // 14
     size_t target_mac_offset = arp_offset + offsetof(ARPHeader, target_mac);
     size_t cut = target_mac_offset + 2;
     arp_truncated_addresses.resize(cut);
-    arp_packets.push_back(arp_truncated_addresses);
-
+    tests.push_back({arp_truncated_addresses, ValidationError::ARP_TRUNCATED_ADDRESSES});
 
 
     // reply to broadcast
-    std::vector<uint8_t> arp_reply_broadcast = arp_valid_reply;
+    std::vector<uint8_t> arp_reply_broadcast = arp_reply;
     for (int i = 0; i < 6; i++) {
         arp_reply_broadcast[32 + i] = 0xFF;  // target MAC = FF:FF:FF:FF:FF:FF
     }
-    arp_packets.push_back(arp_reply_broadcast);
+    tests.push_back({arp_reply_broadcast, ValidationError::ARP_REPLY_TO_BROADCAST});
 
-    std::cout << "\nARP PACKET TESTS\n"  << std::endl;
-    for(size_t i = 0; i < arp_packets.size(); i++) {
-        std::cout << "\n=== Test " << i << " ===" << std::endl;
-        ParsedPacket packet = parse_packet(std::span<const uint8_t>(arp_packets[i]));
-        packet.view.print();
-        std::cout << "\n=== Validation for  packet " << i << " ===" << std::endl;
-        PacketValidator packet_validator(packet.view);
-        packet_validator.print_errors();
-        std::cout << "\n============================\n" <<std::endl;
+
+    oss << "\n==== ARP TESTS ====\n" << std::endl;
+
+    // table header
+    oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result" << "\n";
+    oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
+
+
+    for (size_t i = 0; i < tests.size(); i++)    {
+        run_single_test(oss, static_cast<int>(i + 1), tests[i].first, tests[i].second);
     }
 
+    oss << "\n=======================\n" << std::endl;
+    std::cout << oss.str();
 }
 
 
 
+void run_ipv4_tests() {
+    std::vector<std::pair<std::vector<uint8_t>, ValidationError>> tests;
+    std::ostringstream oss;
+
+    // Build valid packet(TCP) using PacketBuilder
+    uint8_t src_mac[6] = {0x11,0x22,0x33,0x44,0x55,0x66};
+    uint8_t dst_mac[6] = {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF};
+
+    uint8_t src_ip[4] = {192,168,0,1};
+    uint8_t dst_ip[4] = {192,168,0,2};
+
+    std::vector<uint8_t> valid_packet =
+        PacketBuilder::build_tcp_packet(
+            src_mac,
+            dst_mac,
+            src_ip,
+            dst_ip,
+            80,                     // src port
+            443,                    // dest port
+            {0x01,0x02,0x03,0x04}   // payload
+        );
+
+
+    // valid ipv4 packet
+    tests.push_back({valid_packet, ValidationError::NONE});
+
+    // missing ipv4 header
+    std::vector<uint8_t> missing_header = valid_packet;
+    missing_header.resize(14); // ethernet header size is always 14 bytes
+    tests.push_back({missing_header, ValidationError::MISSING_IPV4_HEADER});
+
+    // too small for ipv4
+    std::vector<uint8_t> too_small = valid_packet;
+    too_small.resize(14 + 10); // < 20 bytes
+    tests.push_back({too_small, ValidationError::TOO_SMALL_FOR_IPV4});
+
+    // invalid version (set version to 6)
+    std::vector<uint8_t> invalid_version = valid_packet;
+    invalid_version[14] = (6 << 4) | (invalid_version[14] & 0x0F);
+    tests.push_back({invalid_version, ValidationError::INVALID_IPV4_VERSION});
+
+    // invalid IHL (< 5)
+    std::vector<uint8_t> invalid_ihl = valid_packet;
+    invalid_ihl[14] = (4 << 4) | 4; // IHL = 4 (16 bytes)
+    tests.push_back({invalid_ihl, ValidationError::INVALID_IPV4_IHL});
+
+    // invalid IHL length (header length > packet size)
+    std::vector<uint8_t> invalid_ihl_len = valid_packet;
+    invalid_ihl_len[14] = (4 << 4) | 15; // IHL = 15 (60 bytes)
+    invalid_ihl_len.resize(14 + 40);     // truncate so it's too short
+    tests.push_back({invalid_ihl_len, ValidationError::INVALID_IPV4_IHL_LENGTH});
+
+    // invalid total length (< header length)
+    std::vector<uint8_t> invalid_total_len = valid_packet;
+    invalid_total_len[16] = 0x00;
+    invalid_total_len[17] = 0x10; // total length = 16
+    tests.push_back({invalid_total_len, ValidationError::INVALID_IPV4_TOTAL_LENGTH});
+
+    // total length exceeds packet size
+    std::vector<uint8_t> total_len_exceeds = valid_packet;
+    total_len_exceeds[16] = 0xFF;
+    total_len_exceeds[17] = 0xFF; // absurdly large
+    tests.push_back({total_len_exceeds, ValidationError::IPV4_TOTAL_LENGTH_EXCEEDS_PACKET});
+
+    // invalid checksum (flip a byte in header)
+    std::vector<uint8_t> invalid_checksum = valid_packet;
+    invalid_checksum[20] ^= 0xFF; // corrupt source IP
+    tests.push_back({invalid_checksum, ValidationError::IPV4_INVALID_CHECKSUM});
+
+
+    oss << "\n==== IPV4 TESTS ====\n" << std::endl;
+
+    // table header
+    oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result" << "\n";
+    oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
+
+    for (size_t i = 0; i < tests.size(); i++)    {
+        run_single_test(oss, static_cast<int>(i + 1), tests[i].first, tests[i].second);
+    }
+
+    oss << "\n=======================\n" << std::endl;
+
+    std::cout << oss.str();
+}
+
+
+
+void fix_ipv4_total_length(std::vector<uint8_t>& pkt) {
+    uint16_t new_total = pkt.size() - 14; // subtract Ethernet header
+    pkt[16] = (new_total >> 8) & 0xFF;
+    pkt[17] = new_total & 0xFF;
+}
+
+
+
+void fix_ipv4_checksum(std::vector<uint8_t>& pkt) {
+    // IPv4 header starts at offset 14
+    uint8_t* ip = &pkt[14];
+
+    // Zero checksum field
+    ip[10] = 0;
+    ip[11] = 0;
+
+    // Compute checksum over IHL * 4 bytes
+    uint8_t ihl = ip[0] & 0x0F;
+    size_t header_len = ihl * 4;
+
+    uint16_t sum = compute_checksum(ip, header_len);
+
+    ip[10] = (sum >> 8) & 0xFF;
+    ip[11] = sum & 0xFF;
+}
+
+
+
+
+void run_tcp_tests() {
+    std::vector<std::pair<std::vector<uint8_t>, ValidationError>> tests;
+    std::ostringstream oss;
+
+    // Build valid packet(TCP) using PacketBuilder
+    uint8_t src_mac[6] = {0x11,0x22,0x33,0x44,0x55,0x66};
+    uint8_t dst_mac[6] = {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF};
+
+    uint8_t src_ip[4] = {192,168,0,1};
+    uint8_t dst_ip[4] = {192,168,0,2};
+
+    std::vector<uint8_t> valid_packet =
+        PacketBuilder::build_tcp_packet(
+            src_mac,
+            dst_mac,
+            src_ip,
+            dst_ip,
+            80,                     // src port
+            443,                    // dest port
+            {0x01,0x02,0x03,0x04}   // payload
+        );
+
+
+    // valid tcp packet
+    tests.push_back({valid_packet, ValidationError::NONE});
+
+    // missing tcp header
+    std::vector<uint8_t> missing_header = valid_packet;
+    size_t ethernet_header_len = 14;
+    uint8_t ihl = valid_packet[14] & 0x0F; // tcp header length is stored in low nibble of version_ihl byte
+    size_t ip_header_len = ihl * 4;
+    size_t tcp_offset  = ethernet_header_len + ip_header_len;
+    missing_header.resize(tcp_offset);
+    fix_ipv4_total_length(missing_header);
+    fix_ipv4_checksum(missing_header);
+    tests.push_back({missing_header, ValidationError::MISSING_TCP_HEADER});
+
+    // too small for tcp
+    std::vector<uint8_t> too_small = valid_packet;
+    too_small.resize(tcp_offset + 10); // 10 since minimum tcp header length is 20 bytes;
+    fix_ipv4_total_length(too_small);
+    fix_ipv4_checksum(too_small);
+    tests.push_back({too_small, ValidationError::TOO_SMALL_FOR_TCP});
+
+    // invalid tcp data offset (should ideally be  >= 5)
+    std::vector<uint8_t> invalid_offset = valid_packet;
+    invalid_offset[tcp_offset + 12] = (4 << 4); // (4 words or 16 bytes)
+    tests.push_back({invalid_offset, ValidationError::INVALID_TCP_DATA_OFFSET});
+
+    // tcp header exceeds packet
+    std::vector<uint8_t> header_exceeds = valid_packet;
+    header_exceeds[tcp_offset + 12] = (15 << 4); // 60 bytes header
+    header_exceeds.resize(tcp_offset + 35); // 35 bytes actual (too short)
+    fix_ipv4_total_length(header_exceeds);
+    fix_ipv4_checksum(header_exceeds);
+    tests.push_back({header_exceeds, ValidationError::TCP_HEADER_EXCEEDS_PACKET});
+
+    // tcp invalid checksum
+    std::vector<uint8_t> invalid_checksum = valid_packet;
+    invalid_checksum[tcp_offset + 16] ^= 0xFF; // corrupt checksum high byte
+    tests.push_back({invalid_checksum, ValidationError::TCP_INVALID_CHECKSUM});
+
+
+    oss << "\n==== TCP TESTS ====\n" << std::endl;
+
+    // table header
+    oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result" << "\n";
+    oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
+
+    for (size_t i = 0; i < tests.size(); i++)    {
+        run_single_test(oss, static_cast<int>(i + 1), tests[i].first, tests[i].second);
+    }
+    oss << "\n=======================\n" << std::endl;
+    std::cout << oss.str();
+}
+
+
+
+void run_udp_tests() {
+    std::vector<std::pair<std::vector<uint8_t>, ValidationError>> tests;
+    std::ostringstream oss;
+
+    // Build valid UDP packet using PacketBuilder
+    uint8_t src_mac[6] = {0x11,0x22,0x33,0x44,0x55,0x66};
+    uint8_t dst_mac[6] = {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF};
+
+    uint8_t src_ip[4] = {192,168,0,1};
+    uint8_t dst_ip[4] = {192,168,0,2};
+
+    std::vector<uint8_t> valid_packet =
+        PacketBuilder::build_udp_packet(
+            src_mac,
+            dst_mac,
+            src_ip,
+            dst_ip,
+            80,                     // src port
+            443,                    // dest port
+            {0x01,0x02,0x03,0x04}   // payload
+        );
+
+
+    // valid udp packet
+    tests.push_back({valid_packet, ValidationError::NONE});
+
+    // missing udp header
+    std::vector<uint8_t> missing_header = valid_packet;
+    size_t ethernet_header_len = 14;
+    uint8_t ihl = valid_packet[14] & 0x0F; // udp header length is stored in low nibble of version_ihl byte
+    size_t ip_header_len = ihl * 4;
+    size_t udp_offset  = ethernet_header_len + ip_header_len;
+    missing_header.resize(udp_offset);
+    fix_ipv4_total_length(missing_header);
+    fix_ipv4_checksum(missing_header);
+    tests.push_back({missing_header, ValidationError::MISSING_UDP_HEADER});
+
+    // too small for udp
+    std::vector<uint8_t> too_small = valid_packet;
+    too_small.resize(udp_offset + 4); // since udp header size is 8 bytes
+    fix_ipv4_total_length(too_small);
+    fix_ipv4_checksum(too_small);
+    tests.push_back({too_small, ValidationError::TOO_SMALL_FOR_UDP});
+    
+    // invalid udp length ( < 8)
+    std::vector<uint8_t> invalid_length = valid_packet;
+    invalid_length[udp_offset + 4] = 0x00;
+    invalid_length[udp_offset + 5] = 0x06;
+    fix_ipv4_total_length(invalid_length);
+    fix_ipv4_checksum(invalid_length);
+    tests.push_back({invalid_length, ValidationError::INVALID_UDP_LENGTH});
+
+    // udp length exceeds packet
+    std::vector<uint8_t> exceeds_packet = valid_packet;
+    exceeds_packet[udp_offset + 4] = 0xFF;
+    exceeds_packet[udp_offset + 5] = 0xFF;
+    fix_ipv4_total_length(exceeds_packet);
+    fix_ipv4_checksum(exceeds_packet);
+    tests.push_back({exceeds_packet, ValidationError::UDP_LENGTH_EXCEEDS_PACKET});
+
+    // udp invalid checksum
+    std::vector<uint8_t> invalid_checksum = valid_packet;
+    invalid_checksum[udp_offset + 6] ^= 0xFF; // corrupt checksum high byte
+    tests.push_back({invalid_checksum, ValidationError::UDP_INVALID_CHECKSUM});
+
+
+    oss << "\n==== UDP TESTS ====\n" << std::endl;
+
+    // table header
+    oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result" << "\n";
+    oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
+
+    for (size_t i = 0; i < tests.size(); i++)    {
+        run_single_test(oss, static_cast<int>(i + 1), tests[i].first, tests[i].second);
+    }
+    oss << "\n=======================\n" << std::endl;
+    std::cout << oss.str();
+}
+
+
+
+int main() {
+
+    //run_ethernet_tests();
+    //run_arp_tests();
+    //run_ipv4_tests();
+    //run_tcp_tests();
+    run_udp_tests();
+    // run_icmp_tests();
+
+    /* RAW CAPTURE TEST
+    int res = raw_capture_test();    
+    if(res!= 0){
+        return 1;
+    }
+    */
+    return 0;
+}
+
+
+/*
 // RAW CAPTURE TEST
 int raw_capture_test(){
     SocketCapture capture;
@@ -648,77 +617,4 @@ int raw_capture_test(){
     return 0;
 }
 
-
-void run_ethernet_tests() {
-    std::vector<std::pair<std::vector<uint8_t>, ValidationError>> tests;
-    ostringstream oss;
-
-    // valid ethernet
-    tests.push_back({tcp_valid, ValidationError::NONE});
-
-    // invalid ethertype
-    std::vector<uint8_t> invalid_ethertype_packet = tcp_valid;
-    invalid_ethertype_packet[12] = 0x12;
-    invalid_ethertype_packet[13] = 0x34;
-    tests.push_back({invalid_ethertype_packet, ValidationError::INVALID_ETHERTYPE});
-
-    // ethernet too small
-    std::vector<uint8_t> too_small = {0x00, 0x01, 0x02};
-    tests.push_back({too_small, ValidationError::TOO_SMALL_FOR_ETHERNET});
-
-    oss << "\n==== ARP TESTS ====\n"  << std::endl;
-    for(size_t i = 0; i < tests.size(); i++) {
-        oss << "\n=== Test " << i + 1 << " ===" << std::endl;
-        std::vector<uint8_t> packet = tests[i].first;
-        ValidationError err = tests[i].second;
-        ParsedPacket packet = parse_packet(std::span<const uint8_t>(packet));
-        packet.view.print();
-        std::cout << "\n=== Validation for  packet " << i << " ===" << std::endl;
-        PacketValidator packet_validator(packet.view);
-        packet_validator.print_errors();
-        std::cout << "\n============================\n" <<std::endl;
-    }
-    std::cout << oss.str() << std::endl;
-}
-
-void run_arp_tests() {
-    ostringstream oss;
-    std::cout << oss.str() << std::endl;
-}
-
-void run_ipv4_tests() {
-    ostringstream oss;
-    std::cout << oss.str() << std::endl;
-}
-
-void run_tcp_tests() {
-    ostringstream oss;
-    std::cout << oss.str() << std::endl;
-}
-
-void run_udp_tests() {
-    ostringstream oss;
-    std::cout << oss.str() << std::endl;
-}
-
-int main() {
-
-    run_ethernet_tests();
-    run_arp_tests();
-    run_ipv4_tests();
-    run_tcp_tests();
-    run_udp_tests();
-    // run_icmp_tests();
-    // baseline(); -> Depracated must fix checksums
-    // checksum_test();
-
-    // arp_tests();
-
-    /* RAW CAPTURE TEST
-    int res = raw_capture_test();    
-    if(res!= 0){
-        return 1;
-    }
-    */
-    return 0;
-}
+*/

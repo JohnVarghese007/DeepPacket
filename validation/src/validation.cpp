@@ -120,36 +120,36 @@ void  PacketValidator::validate_packet() {
 
 
 
-void PacketValidator::print_errors() const {
+void PacketValidator::print_errors(std::ostream& os) const {
     for(ValidationError err: errors) {
-        std::cout << to_string(err) << std::endl;
+        os << to_string(err) << std::endl;
     }
 
     // if there are no errors, not even NONE, that means validation never happened
     if(errors.empty()){
-        std::cout << "Error in Validation module" <<  std::endl;
-        std::cout << "Looks like validation never happened" << std::endl;
+        os << "Error in Validation module" <<  std::endl;
+        os << "Looks like validation never happened" << std::endl;
     }
 }
 
 
 
-void PacketValidator::print_raw_packet_bytes() const {
+void PacketValidator::print_raw_packet_bytes(std::ostream& os) const {
     const uint8_t* data = view.data;
     size_t len = view.size();
 
-    std::cout << std::hex << std::setfill('0');
+    os << std::hex << std::setfill('0');
 
     for(size_t i = 0; i < len; i++) {
-        std::cout << std::setw(2) << static_cast<int>(data[i]) << " ";
+        os << std::setw(2) << static_cast<int>(data[i]) << " ";
 
         // group into rows of 16 bytes
         if((i + 1) % 16 == 0) {
-            std::cout << std::endl;
+            os << std::endl;
         }
     }
 
-    std::cout << std::dec << std::endl;
+    os << std::dec << std::endl;
 }
 
 
@@ -357,7 +357,8 @@ bool PacketValidator::validate_tcp(const PacketView& view, ValidationError& erro
 
     uint16_t computed = ~sum & 0xFFFF;
     uint16_t received = ntohs(tcph->checksum);
-
+    // line added for debugging
+    // std::cout << "Computed" << std::hex << computed << "\tRecieved" << received << std::dec << std::endl;
     if (computed != received) {
         error = ValidationError::TCP_INVALID_CHECKSUM;
         return false;
@@ -431,6 +432,8 @@ bool PacketValidator::validate_udp(const PacketView& view, ValidationError& erro
     uint16_t computed = ~sum & 0xFFFF;
     uint16_t received = ntohs(udph->checksum);
 
+    // line added for debugging
+    // std::cout << "Computed" << std::hex << computed << "\tRecieved" << received << std::dec << std::endl;
     if (computed != received) {
         error = ValidationError::UDP_INVALID_CHECKSUM;
         return false;

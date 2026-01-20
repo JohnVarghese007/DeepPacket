@@ -31,27 +31,29 @@ EthernetLayer::EthernetLayer(const uint8_t* packet) {
     eth = reinterpret_cast<const EthernetHeader*>(packet);        
 }
 
-void EthernetLayer::print() const {
-    std::cout << "=== ETHERNET LAYER ===" << std::endl;
-    std::cout << "Source MAC: " << print_mac(eth->src_mac) << std::endl;
-    std::cout << "Destination MAC: " << print_mac(eth->dest_mac) << std::endl;
-    std::cout << "EtherType: " << std::hex << std::uppercase << std::setw(4) << std::setfill('0') << ntohs(eth->ether_type) << std::dec << std::endl;
-    std::cout << "=======================" << std::endl;
+void EthernetLayer::print(std::ostream& os) const {
+    os << "=== ETHERNET LAYER ===" << std::endl;
+    os << "Source MAC: ";
+    print_mac(eth->src_mac, os);
+    os << std::endl;
+    os << "Destination MAC: ";
+    print_mac(eth->dest_mac, os);
+    os << std::endl;
+    os << "EtherType: " << std::hex << std::uppercase << std::setw(4) << std::setfill('0') << ntohs(eth->ether_type) << std::dec << std::endl;
+    os << "=======================" << std::endl;
 }
 
 size_t EthernetLayer::header_size() const {
     return sizeof(EthernetHeader);
 }
 
-std::string EthernetLayer::print_mac(const uint8_t *mac){
-    std::ostringstream oss;
+void EthernetLayer::print_mac(const uint8_t *mac, std::ostream& os){
     for(int i =0; i < 6; i++) {
-        oss << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << (int)mac[i];
+        os << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << (int)mac[i];
         if(i < 5){
-            oss << ":";
+            os << ":";
         }
     }
-    return oss.str();
 }
 
 
@@ -60,15 +62,15 @@ ARPLayer::ARPLayer(const uint8_t *packet) {
     arp = reinterpret_cast<const ARPHeader*>(packet);
 }
 
-void ARPLayer::print() const {
-    std::cout << "=== ARP LAYER ===" << std::endl;
+void ARPLayer::print(std::ostream& os) const {
+    os << "=== ARP LAYER ===" << std::endl;
     // opcode -> 1= Request, 2 = Reply
     uint16_t opcode = ntohs(arp->opcode);
-    std::cout << "Opcode: " << opcode;
-    if(opcode == 1) std::cout << "(Request)";
-    else if(opcode == 2) std::cout << "(Reply)";
-    else std::cout << "(Invalid)";
-    std::cout << std::endl;
+    os << "Opcode: " << opcode;
+    if(opcode == 1) os << "(Request)";
+    else if(opcode == 2) os << "(Reply)";
+    else os << "(Invalid)";
+    os << std::endl;
 
     // Copy IPs to 32 bit
     uint32_t sender_ip_raw;
@@ -76,36 +78,40 @@ void ARPLayer::print() const {
     uint32_t target_ip_raw;
     std::memcpy(&target_ip_raw, arp->target_ip, 4);
 
-    std::cout << "Sender MAC: " << print_mac(arp->sender_mac) << std::endl;
-    std::cout << "Sender IP: "  << print_ip(sender_ip_raw) << std::endl;
-    std::cout << "Target MAC: " << print_mac(arp->target_mac) << std::endl;
-    std::cout << "Target IP: "  << print_ip(target_ip_raw) << std::endl;
-    std::cout << "=======================" << std::endl;
+    os << "Sender MAC: ";
+    print_mac(arp->sender_mac, os);
+    os << std::endl;
+    os << "Sender IP: ";
+    print_ip(sender_ip_raw, os);
+    os << std::endl;
+    os << "Target MAC: ";
+    print_mac(arp->target_mac, os);
+    os << std::endl;
+    os << "Target IP: ";
+    print_ip(target_ip_raw, os);
+    os << std::endl;
+    os << "=======================" << std::endl;
 }
 
 size_t ARPLayer::header_size() const {
     return sizeof(ARPHeader);
 }
 
-std::string ARPLayer::print_mac(const uint8_t *mac){
-    std::ostringstream oss;
+void ARPLayer::print_mac(const uint8_t *mac, std::ostream& os){
     for(int i =0; i < 6; i++) {
-        oss << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << (int)mac[i];
+        os << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << (int)mac[i];
         if(i < 5){
-            oss << ":";
+            os << ":";
         }
     }
-    return oss.str();
 }
 
-std::string ARPLayer::print_ip(uint32_t ip){
-    std::ostringstream oss;
+void ARPLayer::print_ip(uint32_t ip, std::ostream& os){
     ip = ntohl(ip);
-    oss << ((ip >> 24) & 0xFF) << "."
+    os << ((ip >> 24) & 0xFF) << "."
         << ((ip >> 16) & 0xFF) << "."
         << ((ip >> 8) & 0xFF) << "."
         << (ip & 0xFF);
-        return oss.str();
 }
 
 
@@ -115,12 +121,16 @@ IPv4Layer::IPv4Layer(const uint8_t *packet) {
     iph = reinterpret_cast<const IPv4Header*>(packet);
 }
 
-void IPv4Layer::print() const {
-    std::cout << "=== IPv4 Layer ===" << std::endl;
-    std::cout << "Source IP: " << print_ip(iph->src_addr) << std::endl;
-    std::cout << "Destination IP: " << print_ip(iph->dest_addr) << std::endl;
-    std::cout << "Protocol: " << (int) iph->protocol << std::endl;
-    std::cout << "==================" << std::endl;
+void IPv4Layer::print(std::ostream& os) const {
+    os << "=== IPv4 Layer ===" << std::endl;
+    os << "Source IP: ";
+    print_ip(iph->src_addr, os);
+    os << std::endl;
+    os << "Destination IP: ";
+    print_ip(iph->dest_addr, os);
+    os << std::endl;
+    os << "Protocol: " << (int) iph->protocol << std::endl;
+    os << "==================" << std::endl;
 
 }
 
@@ -128,14 +138,12 @@ size_t IPv4Layer::header_size() const {
     return (iph->version_ihl & 0x0F) * 4;
 }
 
-std::string IPv4Layer::print_ip(uint32_t ip){
-    std::ostringstream oss;
+void IPv4Layer::print_ip(uint32_t ip, std::ostream& os){
     ip = ntohl(ip);
-    oss << ((ip >> 24) & 0xFF) << "."
+    os << ((ip >> 24) & 0xFF) << "."
         << ((ip >> 16) & 0xFF) << "."
         << ((ip >> 8) & 0xFF) << "."
         << (ip & 0xFF);
-        return oss.str();
 }
 
 
@@ -145,20 +153,20 @@ TCPLayer::TCPLayer(const uint8_t *packet){
     tcph = reinterpret_cast<const TCPHeader*>(packet);
 }
 
-void TCPLayer::print() const {
-    std::cout << "=== TCP Layer ===" << std::endl;
-    std::cout << "Source Port: " << ntohs(tcph->src_port) << std::endl;
-    std::cout << "Destination Port: " << ntohs(tcph->dest_port) << std::endl;
-    std::cout << "Flags: ";
+void TCPLayer::print(std::ostream& os) const {
+    os << "=== TCP Layer ===" << std::endl;
+    os << "Source Port: " << ntohs(tcph->src_port) << std::endl;
+    os << "Destination Port: " << ntohs(tcph->dest_port) << std::endl;
+    os << "Flags: ";
     std::vector<std::string> flags = decode_tcp_flags(tcph->flags);
     for(size_t i = 0; i < flags.size(); i++){
-        std::cout << flags[i];
+        os << flags[i];
         if(i < flags.size() - 1) {
-            std::cout << " ";
+            os << " ";
         }
     }
-    std::cout << std::endl;
-    std::cout << "=================" << std::endl;
+    os << std::endl;
+    os << "=================" << std::endl;
 }
 
 size_t TCPLayer::header_size() const {
@@ -198,13 +206,13 @@ UDPLayer::UDPLayer(const uint8_t *packet) {
     udph = reinterpret_cast<const UDPHeader*>(packet);
 }
 
-void UDPLayer::print() const {
-    std::cout << "=== UDP Layer ===" << std::endl;
-    std::cout << "Source Port: " << ntohs(udph->src) << std::endl;
-    std::cout << "Destination Port: " << ntohs(udph->dest) << std::endl;
-    std::cout << "Length: " << ntohs(udph->length) << std::endl;
-    std::cout << "Checksum: " << ntohs(udph->checksum) << std::endl;
-    std::cout << "=================" << std::endl;
+void UDPLayer::print(std::ostream& os) const {
+    os << "=== UDP Layer ===" << std::endl;
+    os << "Source Port: " << ntohs(udph->src) << std::endl;
+    os << "Destination Port: " << ntohs(udph->dest) << std::endl;
+    os << "Length: " << ntohs(udph->length) << std::endl;
+    os << "Checksum: " << ntohs(udph->checksum) << std::endl;
+    os << "=================" << std::endl;
 }
 
 size_t UDPLayer::header_size() const {

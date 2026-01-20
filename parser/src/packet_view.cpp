@@ -121,43 +121,43 @@ void PacketView::parse_layers() {
 
 
 // Print Packet View Details
-void PacketView::print() const {
-    std::cout << "=========== PACKET VIEW =============" << std::endl;
+void PacketView::print(std::ostream& os) const {
+    os << "=========== PACKET VIEW =============" << std::endl;
 
     if(has_eth) {
-        eth_layer.print();
+        eth_layer.print(os);
     }
     else { 
-        std::cout << "Ethernet: <invalid>" << std::endl; 
+        os << "Ethernet: <invalid>" << std::endl; 
         return; 
     }
 
     // ARP Packets do not go down further
     if (has_arp) {
-        arp_layer.print();
-        std::cout << "=====================================" << std::endl;
+        arp_layer.print(os);
+        os << "=====================================" << std::endl;
         return;
     }
 
     if(has_ip) {
-        ip_layer.print();
+        ip_layer.print(os);
     } 
     else { 
-        std::cout << "IPv4: <invalid>" << std::endl;
+        os << "IPv4: <invalid>" << std::endl;
         return; 
     }
 
     if(has_tcp) {
-        tcp_layer.print();
+        tcp_layer.print(os);
     }
     else if(has_udp) {
-        udp_layer.print();
+        udp_layer.print(os);
     }
     else {
-        std::cout << "Transport: <unsupported>" << std::endl;
+        os << "Transport: <unsupported>" << std::endl;
     } 
 
-    std::cout << "Payload Length: " << payload_len << " bytes" << std::endl;
-    std::cout << "=====================================" << std::endl;
+    os << "Payload Length: " << payload_len << " bytes" << std::endl;
+    os << "=====================================" << std::endl;
 }
 

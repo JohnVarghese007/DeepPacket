@@ -15,8 +15,8 @@ public:
     }
     
     void validate_packet();
-    void print_errors() const;
-    void print_raw_packet_bytes() const; 
+    void print_errors(std::ostream& os) const;
+    void print_raw_packet_bytes(std::ostream& os) const; 
 
 
 private:

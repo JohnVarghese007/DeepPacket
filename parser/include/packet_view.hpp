@@ -33,7 +33,7 @@ public:
 
 
     // Print Packet Details
-    void print() const;
+    void print(std::ostream& os) const;
 
     // Get Packet Size
     size_t size() const { return length; }
