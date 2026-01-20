@@ -93,6 +93,34 @@ std::vector<uint8_t> udp_valid = {
 
 
 
+// HELPER METHODS
+void fix_ipv4_total_length(std::vector<uint8_t>& pkt) {
+    uint16_t new_total = pkt.size() - 14; // subtract Ethernet header
+    pkt[16] = (new_total >> 8) & 0xFF;
+    pkt[17] = new_total & 0xFF;
+}
+
+
+
+void fix_ipv4_checksum(std::vector<uint8_t>& pkt) {
+    uint8_t* ip = &pkt[14];
+
+    // Zero checksum field
+    ip[10] = 0;
+    ip[11] = 0;
+
+    // Compute checksum over IHL * 4 bytes
+    uint8_t ihl = ip[0] & 0x0F;
+    size_t header_len = ihl * 4;
+
+    uint16_t sum = compute_checksum(ip, header_len);
+
+    ip[10] = (sum >> 8) & 0xFF;
+    ip[11] = sum & 0xFF;
+}
+
+
+
 void run_single_test(std::ostringstream& oss, int test_no, const std::vector<uint8_t>& packet, ValidationError expected) {
     ParsedPacket parsed = parse_packet(std::span<const uint8_t>(packet));
     PacketValidator validator(parsed.view);
@@ -100,11 +128,9 @@ void run_single_test(std::ostringstream& oss, int test_no, const std::vector<uin
     // Not needed for summary table, maybe can add an explicit flag or smth for this
     // validator.print_errors(oss);
 
-    // Determine received error
     ValidationError received = validator.errors.empty() ? ValidationError::NONE : validator.errors[0];
     bool pass = (received == expected);
 
-    // Wider columns for long strings
     oss << std::left
         << std::setw(8)   << test_no
         << std::setw(40)  << to_string(expected)
@@ -115,7 +141,7 @@ void run_single_test(std::ostringstream& oss, int test_no, const std::vector<uin
 }
 
 
-
+// TESTS
 void run_ethernet_tests() {
     std::vector<std::pair<std::vector<uint8_t>, ValidationError>> tests;
     std::ostringstream oss;
@@ -154,11 +180,9 @@ void run_ethernet_tests() {
 
 
     oss << "\n==== ETHERNET TESTS ====\n" << std::endl;
-
     // table header
     oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result" << "\n";
     oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
-
 
     for (size_t i = 0; i < tests.size(); i++)    {
         run_single_test(oss, static_cast<int>(i + 1), tests[i].first, tests[i].second);
@@ -209,7 +233,6 @@ void run_arp_tests() {
     );
     tests.push_back({arp_reply, ValidationError::NONE});
 
-
     // invalid htype
     std::vector<uint8_t> arp_invalid_htype = arp_request;
     arp_invalid_htype[14] = 0x00;
@@ -243,7 +266,7 @@ void run_arp_tests() {
         0x11,0x22,0x33,0x44,0x55,0x66,
         0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,
         0x08,0x06,
-        0x00,0x01,0x08,0x00 // stops early
+        0x00,0x01,0x08,0x00 
     };
     tests.push_back({arp_truncated_header, ValidationError::ARP_TRUNCATED_HEADER});
 
@@ -369,34 +392,6 @@ void run_ipv4_tests() {
 
 
 
-void fix_ipv4_total_length(std::vector<uint8_t>& pkt) {
-    uint16_t new_total = pkt.size() - 14; // subtract Ethernet header
-    pkt[16] = (new_total >> 8) & 0xFF;
-    pkt[17] = new_total & 0xFF;
-}
-
-
-
-void fix_ipv4_checksum(std::vector<uint8_t>& pkt) {
-    // IPv4 header starts at offset 14
-    uint8_t* ip = &pkt[14];
-
-    // Zero checksum field
-    ip[10] = 0;
-    ip[11] = 0;
-
-    // Compute checksum over IHL * 4 bytes
-    uint8_t ihl = ip[0] & 0x0F;
-    size_t header_len = ihl * 4;
-
-    uint16_t sum = compute_checksum(ip, header_len);
-
-    ip[10] = (sum >> 8) & 0xFF;
-    ip[11] = sum & 0xFF;
-}
-
-
-
 
 void run_tcp_tests() {
     std::vector<std::pair<std::vector<uint8_t>, ValidationError>> tests;
@@ -462,7 +457,6 @@ void run_tcp_tests() {
 
 
     oss << "\n==== TCP TESTS ====\n" << std::endl;
-
     // table header
     oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result" << "\n";
     oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
@@ -543,7 +537,6 @@ void run_udp_tests() {
 
 
     oss << "\n==== UDP TESTS ====\n" << std::endl;
-
     // table header
     oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result" << "\n";
     oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
@@ -557,12 +550,24 @@ void run_udp_tests() {
 
 
 
+void run_icmp_tests() {
+
+}
+
+
+
+void run_capture_test() {
+
+}
+
+
+
 int main() {
 
-    //run_ethernet_tests();
-    //run_arp_tests();
-    //run_ipv4_tests();
-    //run_tcp_tests();
+    run_ethernet_tests();
+    run_arp_tests();
+    run_ipv4_tests();
+    run_tcp_tests();
     run_udp_tests();
     // run_icmp_tests();
 
@@ -578,7 +583,7 @@ int main() {
 
 /*
 // RAW CAPTURE TEST
-int raw_capture_test(){
+int run_capture_test(){
     SocketCapture capture;
 
     if (!capture.valid()) {
@@ -598,8 +603,7 @@ int raw_capture_test(){
             continue;
         }
 
-        std::cout << "\n=== Packet " << captured
-                  << " (" << bytes << " bytes) ===\n";
+        std::cout << "\n=== Packet " << captured  << " (" << bytes << " bytes) ===\n";
 
         ParsedPacket packet = parse_packet(
             std::span<const uint8_t>(buffer.data(), bytes)

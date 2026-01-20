@@ -16,6 +16,7 @@
     - ARP
     - TCP
     - UDP
+- Fairly elaborate test suite
 - Very very minimal GUI with working start/stop capture
 - Real time display of parsed packet fields with validation results
 
@@ -26,7 +27,7 @@
 
 ## Build
 - This Project uses CMake
-- Run the following to run the project:
+- Run the following commands to build the project:
     - Navigate to project-root folder
 
 ```bash
@@ -34,9 +35,16 @@ rm -rf build
 cmake -B build
 cmake --build build
 ```
-- Then run the build file
+- This project currently produces two executables
+    - DeepPacketTests
+    - DeepPacketUI
+
+To run the test suite:
+```bash
+sudo ./build/tests/DeepPacketTests > output.txt
+```
+
+To run the GUI:
 ```bash
 sudo ./build/app/DeepPacketUI
 ```
-
-
