@@ -2,6 +2,9 @@
 - A zero-copy network packet inspection tool with live capture, protocol parsing and validation.
 - STATUS: WIP
 
+### NOTE: 
+- DO NOT TRY TO RUN RN AS IT IS STILL WIP
+
 ## Overview
 - DeepPacket is a network packet inspection tool inspired by Wireshark.
 - It captures raw Ethernet frames from a Linux network interface, parses protocol layers and validates packet fields with a zero-copy design to minimize parser overhead.
