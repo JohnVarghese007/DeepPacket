@@ -1,4 +1,5 @@
 #include "serialization.hpp"
+#include <arpa/inet.h>
 #include <sstream>
 
 
@@ -22,6 +23,13 @@ static std::string format_ip(uint32_t ip) {
     return std::string(buf);
 }
 
+static uint32_t read_ipv4_from_bytes(const uint8_t* ip_bytes) {
+    return (uint32_t(ip_bytes[0]) << 24) |
+           (uint32_t(ip_bytes[1]) << 16) |
+           (uint32_t(ip_bytes[2]) << 8)  |
+           (uint32_t(ip_bytes[3]));
+}
+
 
 nlohmann::json packet_to_json(PacketView& view, PacketValidator& validator) {
     nlohmann::json j;
@@ -30,7 +38,7 @@ nlohmann::json packet_to_json(PacketView& view, PacketValidator& validator) {
         {"timestamp", "0000-00-00T00:00:00Z"},
         {"packet_index", "undefined"}
     };
-    
+
 
     std::string protocol = "UNKNOWN";
     if (view.l4_type == L4Type::TCP) protocol = "TCP";
@@ -87,15 +95,15 @@ nlohmann::json packet_to_json(PacketView& view, PacketValidator& validator) {
     }
     if(view.has_arp) {
         layers["arp"] = {
-            {"hardware_type", view.arp_layer.arph->hardware_type},
-            {"protocol_type", view.arp_layer.arph->protocol_type},
-            {"hardware_length", view.arp_layer.arph->hardware_len},
-            {"protocol_length", view.arp_layer.arph->protocol_len},
-            {"opcode", view.arp_layer.arph->opcode},
-            {"src_mac", format_mac(view.arp_layer.arph->sender_mac)},
-            {"src_ip", format_ip(view.arp_layer.arph->sender_ip)},
-            {"dest_mac", format_mac(view.arp_layer.arph->dest_mac)},
-            {"dest_ip", format_ip(view.arp_layer.arph->dest_ip)}
+            {"hardware_type", view.arp_layer.arp->hardware_type},
+            {"protocol_type", view.arp_layer.arp->protocol_type},
+            {"hardware_length", view.arp_layer.arp->hardware_len},
+            {"protocol_length", view.arp_layer.arp->protocol_len},
+            {"opcode", view.arp_layer.arp->opcode},
+            {"src_mac", format_mac(view.arp_layer.arp->sender_mac)},
+            {"src_ip", format_ip(read_ipv4_from_bytes(view.arp_layer.arp->sender_ip))},
+            {"dest_mac", format_mac(view.arp_layer.arp->target_mac)},
+            {"dest_ip", format_ip(read_ipv4_from_bytes(view.arp_layer.arp->target_ip))}
         };
     }
     if(view.has_tcp) {
