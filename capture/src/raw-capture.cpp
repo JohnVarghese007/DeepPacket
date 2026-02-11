@@ -17,7 +17,7 @@ SocketCapture::SocketCapture() {
     sockaddr_ll sll{};
     sll.sll_family   = AF_PACKET;
     sll.sll_protocol = htons(ETH_P_ALL);
-    sll.sll_ifindex  = if_nametoindex("enp0s8");
+    sll.sll_ifindex  = if_nametoindex("enp0s3");
 
     if (sll.sll_ifindex == 0) {
         perror("if_nametoindex");

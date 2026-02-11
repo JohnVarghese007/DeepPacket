@@ -44,7 +44,7 @@ struct PacketRow {
 
 
 static int selectedIndex = -1;     // default selected packet index
-
+static bool capturing = false;    // capture state
 /*
 static std::vector<PacketRow> dummyPackets = {
     {1, 1.180f, "68.114.59.204", "223.241.140.13", "TCP", 71, "17601 → 53 [FIN]", {0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, 0x11, 0x01} },
@@ -132,7 +132,7 @@ void DrawControlBar() {
     ImGui::SameLine();
     ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 180);
 
-    static bool capturing = false;
+    //static bool capturing = false;
     if (!capturing) {
         if (ImGui::Button("Start Capture", ImVec2(120, 0))) {
             capturing = true;
@@ -172,7 +172,7 @@ void DrawLeftPane() {
         ImGui::TableSetupColumn("Length");
         ImGui::TableHeadersRow();
 
-        for (int i = 0; i < packets.size(); i++) {
+        for (std::size_t i = 0; i < packets.size(); i++) {
             const auto& pkt = packets[i];
 
             ImGui::TableNextRow();
@@ -396,12 +396,14 @@ int main() {
 
         // --- REAL CAPTURE PIPELINE ---
         static SocketCapture capture;
-        static bool capturing = false;
+        //static bool capturing = false;
         static std::vector<uint8_t> buffer(65536);
 
+        /*
         if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
             capturing = !capturing;
         }
+        */
 
         if (capturing && capture.valid()) {
             ssize_t bytes = capture.read_frame(buffer.data(), buffer.size());
@@ -410,9 +412,9 @@ int main() {
                 ParsedPacket pkt = parse_packet(std::span<const uint8_t>(buffer.data(), bytes));
                 PacketValidator validator(pkt.view);
 
-             nlohmann::json j = packet_to_json(pkt.view, validator);
+                nlohmann::json j = packet_to_json(pkt.view, validator);
 
-             PacketRow row;
+                PacketRow row;
                 row.number = packets.size() + 1;
                 row.time = ImGui::GetTime();
 

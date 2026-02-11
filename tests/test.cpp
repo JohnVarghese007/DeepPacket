@@ -208,6 +208,52 @@ void run_single_test(std::ostringstream& oss, int test_no, const std::vector<uin
 
 
 // TESTS
+
+int run_capture_test() {
+    std::cout << "\n==== RAW CAPTURE TEST ====\n";
+
+    SocketCapture capture;
+
+    if (!capture.valid()) {
+        std::cerr << "ERROR: Raw socket failed to open (invalid interface or permissions)\n";
+        return 1;
+    }
+
+    constexpr std::size_t MAX_FRAME_SIZE = 65536;
+    std::vector<uint8_t> buffer(MAX_FRAME_SIZE);
+
+    int captured = 0;
+
+    while (captured < 5) {
+        ssize_t bytes = capture.read_frame(buffer.data(), buffer.size());
+
+        if (bytes <= 0) {
+            continue; // try again
+        }
+
+        std::cout << "\n--- Packet " << captured + 1
+                  << " (" << bytes << " bytes) ---\n";
+
+        ParsedPacket pkt = parse_packet(
+            std::span<const uint8_t>(buffer.data(), bytes)
+        );
+
+        PacketValidator validator(pkt.view);
+
+        // Print summary
+        //pkt.view.print();
+        //validator.print_errors();
+
+        captured++;
+    }
+
+    std::cout << "\nCaptured and processed 5 packets successfully.\n";
+    return 0;
+}
+
+
+
+
 void run_ethernet_tests() {
     std::vector<std::pair<std::vector<uint8_t>, ValidationError>> tests;
     std::ostringstream oss;
@@ -717,11 +763,11 @@ void run_icmp_tests() {
     std::cout << oss.str();
 }
 
-
+/*
 void run_capture_test() {
 
 }
-
+*/
 
 
 int main() {
@@ -739,9 +785,58 @@ int main() {
         return 1;
     }
     */
+
+    int res = run_capture_test();
+    if(res!=0) {
+        return res;
+    }
     return 0;
 }
 
+
+/*
+int run_capture_test() {
+    std::cout << "\n==== RAW CAPTURE TEST ====\n";
+
+    SocketCapture capture;
+
+    if (!capture.valid()) {
+        std::cerr << "ERROR: Raw socket failed to open (invalid interface or permissions)\n";
+        return 1;
+    }
+
+    constexpr std::size_t MAX_FRAME_SIZE = 65536;
+    std::vector<uint8_t> buffer(MAX_FRAME_SIZE);
+
+    int captured = 0;
+
+    while (captured < 5) {
+        ssize_t bytes = capture.read_frame(buffer.data(), buffer.size());
+
+        if (bytes <= 0) {
+            continue; // try again
+        }
+
+        std::cout << "\n--- Packet " << captured + 1
+                  << " (" << bytes << " bytes) ---\n";
+
+        ParsedPacket pkt = parse_packet(
+            std::span<const uint8_t>(buffer.data(), bytes)
+        );
+
+        PacketValidator validator(pkt.view);
+
+        // Print summary
+        pkt.view.print();
+        validator.print_errors();
+
+        captured++;
+    }
+
+    std::cout << "\nCaptured and processed 5 packets successfully.\n";
+    return 0;
+}
+    */
 
 /*
 // RAW CAPTURE TEST
