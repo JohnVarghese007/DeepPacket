@@ -105,6 +105,11 @@ void  PacketValidator::validate_packet() {
                 errors.push_back(err);
             break;
 
+        case L4Type::ICMP:
+            if(!validate_icmp(view, err))
+                errors.push_back(err);
+            break; 
+
         default:
             errors.push_back(ValidationError::UNSUPPORTED_L4_PROTOCOL);
             break;
@@ -298,7 +303,6 @@ bool PacketValidator::validate_ipv4(const PacketView& view, ValidationError& err
 
 
 
-// Validate TCP 
 bool PacketValidator::validate_tcp(const PacketView& view, ValidationError& error) {
     const TCPHeader* tcp = view.tcp_layer.tcph;
 
@@ -368,7 +372,7 @@ bool PacketValidator::validate_tcp(const PacketView& view, ValidationError& erro
 }
 
 
-// Validate UDP header
+
 bool PacketValidator::validate_udp(const PacketView& view, ValidationError& error) {
     const UDPHeader* udp = view.udp_layer.udph;
 
@@ -443,3 +447,108 @@ bool PacketValidator::validate_udp(const PacketView& view, ValidationError& erro
 }
 
 
+
+bool PacketValidator::validate_icmp(const PacketView& view, ValidationError& error) {
+    const ICMPFixedHeader* icmp = view.icmp_layer.icmph;
+
+    if (!view.has_icmp || !icmp) {
+        error = ValidationError::MISSING_ICMP_HEADER;
+        return false;
+    }
+
+    size_t icmp_offset = ETHERNET_HEADER_SIZE + view.ip_layer.header_size();
+    size_t icmp_header_len = view.icmp_layer.header_size();
+    if (view.size() < icmp_offset + icmp_header_len) {
+        error = ValidationError::TOO_SMALL_FOR_ICMP;
+        return false;
+    }
+
+    // valid type
+    if (icmp->type != 0 && icmp->type != 3 && icmp->type != 5 &&
+        icmp->type != 8 && icmp->type != 12) {
+        error = ValidationError::ICMP_INVALID_TYPE;
+        return false;
+    }
+
+    // valid codes for respective types
+    switch (icmp->type) {
+        case 0:
+        case 8:
+            if (icmp->code != 0) {
+                error = ValidationError::ICMP_INVALID_CODE;
+                return false;
+            }
+            break;
+
+        case 3:
+            if (icmp->code > 15) {
+                error = ValidationError::ICMP_INVALID_CODE;
+                return false;
+            }
+            break;
+
+        case 5:
+            if (icmp->code > 3) {
+                error = ValidationError::ICMP_INVALID_CODE;
+                return false;
+            }
+            break;
+
+        case 12:
+            if (icmp->code > 2) {
+                error = ValidationError::ICMP_INVALID_CODE;
+                return false;
+            }
+            break;
+    }
+
+    size_t icmp_len = ntohs(view.ip_layer.iph->total_length) - view.ip_layer.header_size();
+
+    if (icmp->type == 3 || icmp->type == 5 || icmp->type == 12) {
+        // truncated payload
+        size_t payload_len = icmp_len - icmp_header_len;
+        if (payload_len < 28) {
+            error = ValidationError::ICMP_TRUNCATED_PAYLOAD;
+            return false;
+        }
+
+
+        // invalid ipv4 (structural checks only, no validation of field values)
+        const uint8_t* inner_ptr = view.data + icmp_offset + icmp_header_len;
+        const IPv4Header* inner = reinterpret_cast<const IPv4Header*>(inner_ptr);
+
+        if ((inner->version_ihl >> 4) != 4) {
+            error = ValidationError::ICMP_EMBEDDED_IPV4_INVALID;
+            return false;
+        }
+
+        uint8_t inner_ihl = inner->version_ihl & 0x0F;
+        if (inner_ihl < 5) {
+            error = ValidationError::ICMP_EMBEDDED_IPV4_INVALID;
+            return false;
+        }
+
+        size_t inner_header_len = inner_ihl * 4;
+        uint16_t inner_total_len = ntohs(inner->total_length);
+
+        if (inner_total_len < inner_header_len) {
+            error = ValidationError::ICMP_EMBEDDED_IPV4_INVALID;
+            return false;
+        }
+    }
+
+    // checksum validation
+    uint16_t received = ntohs(icmp->checksum);
+    uint8_t temp[65535];
+    memcpy(temp, view.data + icmp_offset, icmp_len);
+    // zeroing out checksum before computation
+    temp[2] = 0;
+    temp[3] = 0;
+    uint16_t computed = compute_checksum(temp, icmp_len);
+
+    if (computed != received) {
+        error = ValidationError::ICMP_INVALID_CHECKSUM;
+        return false;
+    }
+    return true;
+}

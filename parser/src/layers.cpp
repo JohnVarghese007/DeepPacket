@@ -22,6 +22,7 @@
         - IPv4Layer
         - TCPLayer
         - UDPLayer
+        - ICMPLayer
 */
 
 
@@ -217,5 +218,62 @@ void UDPLayer::print(std::ostream& os) const {
 
 size_t UDPLayer::header_size() const {
     return sizeof(UDPHeader);
+}
+
+
+
+// Layer 4 -> ICMP Layer
+ICMPLayer::ICMPLayer(const uint8_t *packet) { 
+    icmph = reinterpret_cast<const ICMPFixedHeader*>(packet);
+    echo = nullptr;
+    unreach = nullptr;
+    redirect = nullptr;
+    param = nullptr;
+
+    size_t fixed_offset = sizeof(ICMPFixedHeader);
+    switch(icmph ->type) {
+
+        case 0: // reply
+        case 8: // request
+            echo = reinterpret_cast<const ICMPEcho*>(packet + fixed_offset);
+            break;
+
+        case 3:
+            unreach = reinterpret_cast<const ICMPDestUnreach*>(packet + fixed_offset);
+            break;
+            
+        case 5:
+            redirect = reinterpret_cast<const ICMPRedirect*>(packet + fixed_offset);
+            break;
+
+        case 12:
+            param = reinterpret_cast<const ICMPParamProblem*>(packet + fixed_offset);
+            break;
+
+        default:
+            // unsupported type
+            break;
+
+
+    }
+}
+
+void ICMPLayer::print(std::ostream& os) const {
+    os << "=== ICMP Layer ===" << std::endl;
+    os << "Type: " << icmph->type << std::endl;
+    os << "Code: " << icmph->code << std::endl;
+    os << "Checksum: " << ntohs(icmph->checksum) << std::endl;
+    os << "=================" << std::endl;
+}
+
+size_t ICMPLayer::header_size() const {
+    size_t res = sizeof(ICMPFixedHeader);
+
+    if(echo) res += sizeof(ICMPEcho);
+    if(unreach) res += sizeof(ICMPDestUnreach);
+    if(redirect) res += sizeof(ICMPRedirect);
+    if(param) res+= sizeof(ICMPParamProblem);
+
+    return res;
 }
 

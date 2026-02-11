@@ -93,6 +93,72 @@ std::vector<uint8_t> udp_valid = {
 
 
 
+// Sample ARP Request (Ethernet + ARP Header)
+std::vector<uint8_t> arp_valid = {
+
+    // =======================
+    // ETHERNET HEADER (14 B)
+    // =======================
+    0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,   // Destination MAC = Broadcast
+    0x11,0x22,0x33,0x44,0x55,0x66,   // Source MAC
+    0x08,0x06,                       // EtherType = ARP (0x0806)
+
+    // =======================
+    // ARP HEADER (28 B)
+    // =======================
+    0x00,0x01,                       // Hardware Type = Ethernet (1)
+    0x08,0x00,                       // Protocol Type = IPv4 (0x0800)
+    0x06,                            // Hardware Size = 6
+    0x04,                            // Protocol Size = 4
+    0x00,0x01,                       // Opcode = Request (1)
+
+    // Sender MAC + Sender IP
+    0x11,0x22,0x33,0x44,0x55,0x66,   // Sender MAC
+    0xC0,0xA8,0x00,0x01,             // Sender IP = 192.168.0.1
+
+    // Target MAC + Target IP
+    0x00,0x00,0x00,0x00,0x00,0x00,   // Target MAC = Unknown
+    0xC0,0xA8,0x00,0x02              // Target IP = 192.168.0.2
+};
+
+
+
+// Sample ICMP Echo Request (Ethernet + IPv4 + ICMP)
+std::vector<uint8_t> icmp_valid = {
+
+    // =======================
+    // ETHERNET HEADER (14 B)
+    // =======================
+    0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,   // Destination MAC
+    0x11,0x22,0x33,0x44,0x55,0x66,   // Source MAC
+    0x08,0x00,                       // EtherType = IPv4 (0x0800)
+
+    // =======================
+    // IPv4 HEADER (20 B)
+    // =======================
+    0x45,                            // Version=4, IHL=5
+    0x00,                            // DSCP/ECN
+    0x00,0x1C,                       // Total Length = 28 bytes (20 IP + 8 ICMP)
+    0x00,0x01,                       // Identification
+    0x00,0x00,                       // Flags + Fragment Offset
+    0x40,                            // TTL = 64
+    0x01,                            // Protocol = ICMP (1)
+    0x00,0x00,                       // IPv4 Checksum (will fix below)
+    0xC0,0xA8,0x00,0x01,             // Source IP
+    0xC0,0xA8,0x00,0x02,             // Destination IP
+
+    // =======================
+    // ICMP HEADER (8 B)
+    // =======================
+    0x08,                            // Type = 8 (Echo Request)
+    0x00,                            // Code = 0
+    0x00,0x00,                       // Checksum (will fix below)
+    0x12,0x34,                       // Identifier
+    0x00,0x01                        // Sequence Number
+};
+
+
+
 // HELPER METHODS
 void fix_ipv4_total_length(std::vector<uint8_t>& pkt) {
     uint16_t new_total = pkt.size() - 14; // subtract Ethernet header
@@ -551,9 +617,105 @@ void run_udp_tests() {
 
 
 void run_icmp_tests() {
+    std::vector<std::pair<std::vector<uint8_t>, ValidationError>> tests;
+    std::ostringstream oss;
 
+    // Build valid ICMP Echo Request using PacketBuilder
+    uint8_t src_mac[6] = {0x11,0x22,0x33,0x44,0x55,0x66};
+    uint8_t dst_mac[6] = {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF};
+
+    uint8_t src_ip[4] = {192,168,0,1};
+    uint8_t dst_ip[4] = {192,168,0,2};
+
+    std::vector<uint8_t> payload = {0xDE,0xAD,0xBE,0xEF};
+
+    std::vector<uint8_t> valid_packet =
+        PacketBuilder::build_icmp_packet(
+            src_mac,
+            dst_mac,
+            src_ip,
+            dst_ip,
+            8,      // Echo Request
+            0,      // Code
+            0x1234, // Identifier
+            0x0001, // Sequence
+            payload
+        );
+
+    // valid icmp packet
+    tests.push_back({valid_packet, ValidationError::NONE});
+
+    // Compute offsets
+    size_t ethernet_header_len = 14;
+    uint8_t ihl = valid_packet[14] & 0x0F;
+    size_t ip_header_len = ihl * 4;
+    size_t icmp_offset = ethernet_header_len + ip_header_len;
+    size_t icmp_header_len = 8;   // ICMP fixed header is always 8 bytes
+
+    // missing icmp header
+    std::vector<uint8_t> missing_header = valid_packet;
+    missing_header.resize(icmp_offset);
+    fix_ipv4_total_length(missing_header);
+    fix_ipv4_checksum(missing_header);
+    tests.push_back({missing_header, ValidationError::MISSING_ICMP_HEADER});
+
+    // too small for icmp
+    std::vector<uint8_t> too_small = valid_packet;
+    too_small.resize(icmp_offset + 4); // ICMP header size is 8 bytes
+    fix_ipv4_total_length(too_small);
+    fix_ipv4_checksum(too_small);
+    tests.push_back({too_small, ValidationError::TOO_SMALL_FOR_ICMP});
+
+    // invalid type
+    std::vector<uint8_t> invalid_type = valid_packet;
+    invalid_type[icmp_offset] = 99; 
+    fix_ipv4_total_length(invalid_type);
+    fix_ipv4_checksum(invalid_type);
+    tests.push_back({invalid_type, ValidationError::ICMP_INVALID_TYPE});
+
+    // invalid code
+    std::vector<uint8_t> invalid_code = valid_packet;
+    invalid_code[icmp_offset + 1] = 5; // invalid for echo
+    fix_ipv4_total_length(invalid_code);
+    fix_ipv4_checksum(invalid_code);
+    tests.push_back({invalid_code, ValidationError::ICMP_INVALID_CODE});
+
+    // invalid checksum
+    std::vector<uint8_t> invalid_checksum = valid_packet;
+    invalid_checksum[icmp_offset + 2] ^= 0xFF; // corrupt by flipping bits
+    fix_ipv4_total_length(invalid_checksum);
+    fix_ipv4_checksum(invalid_checksum);
+    tests.push_back({invalid_checksum, ValidationError::ICMP_INVALID_CHECKSUM});
+
+    // truncated payload
+    std::vector<uint8_t> truncated_payload = valid_packet;
+    truncated_payload[icmp_offset] = 3; // set type to dest unreachable
+    truncated_payload.resize(icmp_offset + 12); // less than 28 bytes
+    fix_ipv4_total_length(truncated_payload);
+    fix_ipv4_checksum(truncated_payload);
+    tests.push_back({truncated_payload, ValidationError::ICMP_TRUNCATED_PAYLOAD});
+
+    // embedded ipv4 invalid
+    std::vector<uint8_t> invalid_embed = valid_packet;
+    invalid_embed[icmp_offset] = 3; //set type to dest unreachable    
+    invalid_embed.resize(icmp_offset + icmp_header_len + 28); // Ensure payload is not truncated
+    invalid_embed[icmp_offset + icmp_header_len] = 0x60; 
+    fix_ipv4_total_length(invalid_embed);
+    fix_ipv4_checksum(invalid_embed);
+    tests.push_back({invalid_embed, ValidationError::ICMP_EMBEDDED_IPV4_INVALID});
+
+    
+    oss << "\n==== ICMP TESTS ====\n" << std::endl;
+    // table header
+    oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result" << "\n";
+    oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
+
+    for (size_t i = 0; i < tests.size(); i++) {
+        run_single_test(oss, static_cast<int>(i + 1), tests[i].first, tests[i].second);
+    }
+    oss << "\n=======================\n" << std::endl;
+    std::cout << oss.str();
 }
-
 
 
 void run_capture_test() {
@@ -569,7 +731,7 @@ int main() {
     run_ipv4_tests();
     run_tcp_tests();
     run_udp_tests();
-    // run_icmp_tests();
+    run_icmp_tests();
 
     /* RAW CAPTURE TEST
     int res = raw_capture_test();    

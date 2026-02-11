@@ -87,3 +87,21 @@ public:
 };
 
 
+// LAYER 5 -> ICMP Header
+class ICMPLayer {
+public:
+    const ICMPFixedHeader *icmph;
+    const ICMPEcho *echo;
+    const ICMPDestUnreach *unreach;
+    const ICMPRedirect *redirect;
+    const ICMPParamProblem *param;
+
+    ICMPLayer() : icmph(nullptr), echo(nullptr), unreach(nullptr), redirect(nullptr), param(nullptr) {}
+    ICMPLayer(const uint8_t *packet);
+    
+    void print(std::ostream& os) const;
+    size_t header_size() const;
+
+};
+
+

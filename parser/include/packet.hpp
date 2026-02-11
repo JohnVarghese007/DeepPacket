@@ -1,6 +1,8 @@
 #pragma once
 #include <cstdint>
 
+#pragma pack(push, 1)
+
 // LAYER 2 -> Ethernet Header
 struct EthernetHeader {
     uint8_t dest_mac[6];  
@@ -59,9 +61,43 @@ struct UDPHeader {
     uint16_t checksum;
 };
 
+// LAYER 4 -> ICMP Fixed Header
+struct ICMPFixedHeader {
+    uint8_t type;
+    uint8_t code;
+    uint16_t checksum;
+};
+
+// ICMP variable headers depending on type
+// type 0 or 8
+struct ICMPEcho {
+    uint16_t identifier;
+    uint16_t sequence;
+};
+
+// type 3
+struct ICMPDestUnreach {
+    uint32_t data; // unused or mtu depending on code
+};
+
+// type 5
+struct ICMPRedirect {
+    uint32_t gateway_ip;
+};
+
+// type 12
+struct ICMPParamProblem {
+    uint8_t pointer;
+    uint8_t unused[3];
+};
+
+#pragma pack(pop)
+
+
 // Supported L4 Protocols
 enum class L4Type {
     TCP,
     UDP,
+    ICMP,
     UNKNOWN
 };

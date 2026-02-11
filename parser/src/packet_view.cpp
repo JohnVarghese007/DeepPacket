@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <arpa/inet.h>
 
+#define ICMP_PROTOCOL_VALUE 1
 #define TCP_PROTOCOL_VALUE 6
 #define UDP_PROTOCOL_VALUE 17
 #define IPv4_ETHERTYPE 0x0800
@@ -22,7 +23,7 @@
 // PacketView Constructor
 PacketView::PacketView(const uint8_t* packet, size_t length) :
     data(packet), length(length), 
-    has_eth(false), has_arp(false), has_ip(false), has_tcp(false), has_udp(false),
+    has_eth(false), has_arp(false), has_ip(false), has_tcp(false), has_udp(false), has_icmp(false),
     payload(nullptr), payload_len(0), l4_type(L4Type::UNKNOWN)
 {
     parse_layers();
@@ -110,6 +111,28 @@ void PacketView::parse_layers() {
             payload = data + l4_offset + udp_header_len;
             payload_len = length - (l4_offset + udp_header_len);
         }
+        else if(ip_layer.iph->protocol == ICMP_PROTOCOL_VALUE){
+            l4_type = L4Type::ICMP;
+
+            if (length < l4_offset + sizeof(ICMPFixedHeader)) {
+                return;
+            }
+
+            // Parse ICMP
+            icmp_layer = ICMPLayer(data + l4_offset);
+            has_icmp = true;
+
+            size_t icmp_header_len = icmp_layer.header_size();
+
+            if (l4_offset + icmp_header_len > length) {
+                payload = nullptr;
+                payload_len = 0;
+                return;
+            }
+
+            payload = data + l4_offset + icmp_header_len;
+            payload_len = length - (l4_offset + icmp_header_len);
+        }
         else {
             // Unsupported L4 Protocol
             l4_type = L4Type::UNKNOWN;
@@ -152,6 +175,9 @@ void PacketView::print(std::ostream& os) const {
     }
     else if(has_udp) {
         udp_layer.print(os);
+    }
+    else if(has_icmp) {
+        icmp_layer.print(os);
     }
     else {
         os << "Transport: <unsupported>" << std::endl;

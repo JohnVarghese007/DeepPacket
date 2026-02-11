@@ -24,4 +24,5 @@ target_link_libraries(DeepPacketUI
         parser
         validation
         capture
+        serialization
 )

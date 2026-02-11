@@ -1,4 +1,64 @@
 
+==== ETHERNET TESTS ====
+
+Test#   Expected                                Received                                Result
+----------------------------------------------------------------------------------------------
+1       No Errors Found during validation       No Errors Found during validation       PASS
+2       Ethernet: Invalid Ethertype             Ethernet: Invalid Ethertype             PASS
+3       Ethernet: Too small                     Ethernet: Too small                     PASS
+
+=======================
+
+
+==== ARP TESTS ====
+
+Test#   Expected                                Received                                Result
+----------------------------------------------------------------------------------------------
+1       No Errors Found during validation       No Errors Found during validation       PASS
+2       No Errors Found during validation       No Errors Found during validation       PASS
+3       ARP: Invalid HTYPE                      ARP: Invalid HTYPE                      PASS
+4       ARP: Invalid PTYPE                      ARP: Invalid PTYPE                      PASS
+5       ARP: Invalid HLEN                       ARP: Invalid HLEN                       PASS
+6       ARP: Invalid PLEN                       ARP: Invalid PLEN                       PASS
+7       ARP: Invalid opcode                     ARP: Invalid opcode                     PASS
+8       ARP: Truncated header                   ARP: Truncated header                   PASS
+9       ARP: Truncated addresses                ARP: Truncated addresses                PASS
+10      ARP: Reply sent to broadcast            ARP: Reply sent to broadcast            PASS
+
+=======================
+
+
+==== IPV4 TESTS ====
+
+Test#   Expected                                Received                                Result
+----------------------------------------------------------------------------------------------
+1       No Errors Found during validation       No Errors Found during validation       PASS
+2       IPv4: Missing header                    IPv4: Missing header                    PASS
+3       IPv4: Too small                         IPv4: Too small                         PASS
+4       IPv4: Invalid version                   IPv4: Invalid version                   PASS
+5       IPv4: Invalid IHL                       IPv4: Invalid IHL                       PASS
+6       IPv4: IHL length mismatch               IPv4: IHL length mismatch               PASS
+7       IPv4: Invalid total length              IPv4: Invalid total length              PASS
+8       IPv4: Total length exceeds packet       IPv4: Total length exceeds packet       PASS
+9       IPv4: Invalid checksum                  IPv4: Invalid checksum                  PASS
+
+=======================
+
+
+==== TCP TESTS ====
+
+Test#   Expected                                Received                                Result
+----------------------------------------------------------------------------------------------
+1       No Errors Found during validation       No Errors Found during validation       PASS
+2       TCP: Missing header                     TCP: Missing header                     PASS
+3       TCP: Too small                          TCP: Too small                          PASS
+4       TCP: Invalid data offset                TCP: Invalid data offset                PASS
+5       TCP: Header exceeds packet              TCP: Header exceeds packet              PASS
+6       TCP: Invalid checksum                   TCP: Invalid checksum                   PASS
+
+=======================
+
+
 ==== UDP TESTS ====
 
 Test#   Expected                                Received                                Result
@@ -9,6 +69,22 @@ Test#   Expected                                Received                        
 4       UDP: Invalid length                     UDP: Invalid length                     PASS
 5       UDP: Length exceeds packet              UDP: Length exceeds packet              PASS
 6       UDP: Invalid checksum                   UDP: Invalid checksum                   PASS
+
+=======================
+
+
+==== ICMP TESTS ====
+
+Test#   Expected                                Received                                Result
+----------------------------------------------------------------------------------------------
+1       No Errors Found during validation       No Errors Found during validation       PASS
+2       ICMP: Missing header                    ICMP: Missing header                    PASS
+3       ICMP: Too small                         ICMP: Too small                         PASS
+4       ICMP: Invalid type                      ICMP: Invalid type                      PASS
+5       ICMP: Invalid code                      ICMP: Invalid code                      PASS
+6       ICMP: Invalid checksum                  ICMP: Invalid checksum                  PASS
+7       ICMP: Truncated Payload                 ICMP: Truncated Payload                 PASS
+8       ICMP: Embedded IPv4 invalid             ICMP: Embedded IPv4 invalid             PASS
 
 =======================
 
