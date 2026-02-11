@@ -159,9 +159,12 @@ std::vector<uint8_t> icmp_valid = {
 
 
 
-// HELPER METHODS
+/*
+    ====== HELPER METHODS ======
+*/
+
 void fix_ipv4_total_length(std::vector<uint8_t>& pkt) {
-    uint16_t new_total = pkt.size() - 14; // subtract Ethernet header
+    uint16_t new_total = pkt.size() - 14; 
     pkt[16] = (new_total >> 8) & 0xFF;
     pkt[17] = new_total & 0xFF;
 }
@@ -170,7 +173,6 @@ void fix_ipv4_total_length(std::vector<uint8_t>& pkt) {
 
 void fix_ipv4_checksum(std::vector<uint8_t>& pkt) {
     uint8_t* ip = &pkt[14];
-
     // Zero checksum field
     ip[10] = 0;
     ip[11] = 0;
@@ -191,9 +193,6 @@ void run_single_test(std::ostringstream& oss, int test_no, const std::vector<uin
     ParsedPacket parsed = parse_packet(std::span<const uint8_t>(packet));
     PacketValidator validator(parsed.view);
 
-    // Not needed for summary table, maybe can add an explicit flag or smth for this
-    // validator.print_errors(oss);
-
     ValidationError received = validator.errors.empty() ? ValidationError::NONE : validator.errors[0];
     bool pass = (received == expected);
 
@@ -203,56 +202,14 @@ void run_single_test(std::ostringstream& oss, int test_no, const std::vector<uin
         << std::setw(40)  << to_string(received)
         << (pass ? "PASS" : "FAIL")
         << "\n";
-
 }
 
 
-// TESTS
-
-int run_capture_test() {
-    std::cout << "\n==== RAW CAPTURE TEST ====\n";
-
-    SocketCapture capture;
-
-    if (!capture.valid()) {
-        std::cerr << "ERROR: Raw socket failed to open (invalid interface or permissions)\n";
-        return 1;
-    }
-
-    constexpr std::size_t MAX_FRAME_SIZE = 65536;
-    std::vector<uint8_t> buffer(MAX_FRAME_SIZE);
-
-    int captured = 0;
-
-    while (captured < 5) {
-        ssize_t bytes = capture.read_frame(buffer.data(), buffer.size());
-
-        if (bytes <= 0) {
-            continue; // try again
-        }
-
-        std::cout << "\n--- Packet " << captured + 1
-                  << " (" << bytes << " bytes) ---\n";
-
-        ParsedPacket pkt = parse_packet(
-            std::span<const uint8_t>(buffer.data(), bytes)
-        );
-
-        PacketValidator validator(pkt.view);
-
-        // Print summary
-        //pkt.view.print();
-        //validator.print_errors();
-
-        captured++;
-    }
-
-    std::cout << "\nCaptured and processed 5 packets successfully.\n";
-    return 0;
-}
-
-
-
+/* 
+    ======= TEST SUITE =======
+    - Test cases for Ethernet, ARP, IPv4, TCP, UDP, ICMP
+    - Checks if raw-capture can capture packets and if parser/validator work correctly
+*/
 
 void run_ethernet_tests() {
     std::vector<std::pair<std::vector<uint8_t>, ValidationError>> tests;
@@ -261,7 +218,6 @@ void run_ethernet_tests() {
     // Build valid packet using PacketBuilder
     uint8_t src_mac[6] = {0x11,0x22,0x33,0x44,0x55,0x66};
     uint8_t dst_mac[6] = {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF};
-
     uint8_t src_ip[4] = {192,168,0,1};
     uint8_t dst_ip[4] = {192,168,0,2};
 
@@ -290,7 +246,6 @@ void run_ethernet_tests() {
     std::vector<uint8_t> too_small = {0x00, 0x01, 0x02};
     tests.push_back({too_small, ValidationError::TOO_SMALL_FOR_ETHERNET});
 
-
     oss << "\n==== ETHERNET TESTS ====\n" << std::endl;
     // table header
     oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result" << "\n";
@@ -311,14 +266,11 @@ void run_arp_tests() {
     std::ostringstream oss;
 
     // Build valid reply packet using PacketBuilder
-    // Example MAC/IPs
     uint8_t src_mac[6]     = {0x11,0x22,0x33,0x44,0x55,0x66};
     uint8_t dst_mac_req[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}; // broadcast for request
     uint8_t dst_mac_rep[6] = {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF}; // target MAC for reply
-
     uint8_t sender_ip[4]   = {192,168,0,1};
     uint8_t target_ip[4]   = {192,168,0,2};
-
     uint8_t zero_mac[6]    = {0,0,0,0,0,0};
 
     // --- Valid ARP Request (who-has 192.168.0.2?) ---
@@ -348,23 +300,23 @@ void run_arp_tests() {
     // invalid htype
     std::vector<uint8_t> arp_invalid_htype = arp_request;
     arp_invalid_htype[14] = 0x00;
-    arp_invalid_htype[15] = 0x02;   // HTYPE = 2 (not Ethernet)
+    arp_invalid_htype[15] = 0x02;   // htype = 2 (not Ethernet)
     tests.push_back({arp_invalid_htype, ValidationError::ARP_INVALID_HTYPE});
 
     // invalid ptype
     std::vector<uint8_t> arp_invalid_ptype = arp_request;
     arp_invalid_ptype[16] = 0x12;
-    arp_invalid_ptype[17] = 0x34;   // PTYPE = 0x1234
+    arp_invalid_ptype[17] = 0x34;   // ptype invalid (not IPv4)
     tests.push_back({arp_invalid_ptype, ValidationError::ARP_INVALID_PTYPE});
 
     // invalid hlen
     std::vector<uint8_t> arp_invalid_hlen = arp_request;
-    arp_invalid_hlen[18] = 0x05;    // HLEN = 5 (should be 6)
+    arp_invalid_hlen[18] = 0x05;    // header length = 5 (should be 6)
     tests.push_back({arp_invalid_hlen, ValidationError::ARP_INVALID_HLEN});
 
     // invalid plen
     std::vector<uint8_t> arp_invalid_plen = arp_request;
-    arp_invalid_plen[19] = 0x05;    // PLEN = 5 (should be 4)
+    arp_invalid_plen[19] = 0x05;    // protocol length = 5 (should be 4 for IPv4 at least)
     tests.push_back({arp_invalid_plen, ValidationError::ARP_INVALID_PLEN});
 
     // invalid opcode
@@ -385,7 +337,7 @@ void run_arp_tests() {
     // truncated addresses
     std::vector<uint8_t> arp_truncated_addresses = arp_request;
 
-    size_t arp_offset = 14; // 14
+    size_t arp_offset = 14; 
     size_t target_mac_offset = arp_offset + offsetof(ARPHeader, target_mac);
     size_t cut = target_mac_offset + 2;
     arp_truncated_addresses.resize(cut);
@@ -401,7 +353,6 @@ void run_arp_tests() {
 
 
     oss << "\n==== ARP TESTS ====\n" << std::endl;
-
     // table header
     oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result" << "\n";
     oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
@@ -466,7 +417,7 @@ void run_ipv4_tests() {
     // invalid IHL length (header length > packet size)
     std::vector<uint8_t> invalid_ihl_len = valid_packet;
     invalid_ihl_len[14] = (4 << 4) | 15; // IHL = 15 (60 bytes)
-    invalid_ihl_len.resize(14 + 40);     // truncate so it's too short
+    invalid_ihl_len.resize(14 + 40);     // truncating so that it's too short
     tests.push_back({invalid_ihl_len, ValidationError::INVALID_IPV4_IHL_LENGTH});
 
     // invalid total length (< header length)
@@ -478,10 +429,10 @@ void run_ipv4_tests() {
     // total length exceeds packet size
     std::vector<uint8_t> total_len_exceeds = valid_packet;
     total_len_exceeds[16] = 0xFF;
-    total_len_exceeds[17] = 0xFF; // absurdly large
+    total_len_exceeds[17] = 0xFF; // too large
     tests.push_back({total_len_exceeds, ValidationError::IPV4_TOTAL_LENGTH_EXCEEDS_PACKET});
 
-    // invalid checksum (flip a byte in header)
+    // invalid checksum 
     std::vector<uint8_t> invalid_checksum = valid_packet;
     invalid_checksum[20] ^= 0xFF; // corrupt source IP
     tests.push_back({invalid_checksum, ValidationError::IPV4_INVALID_CHECKSUM});
@@ -728,7 +679,7 @@ void run_icmp_tests() {
 
     // invalid checksum
     std::vector<uint8_t> invalid_checksum = valid_packet;
-    invalid_checksum[icmp_offset + 2] ^= 0xFF; // corrupt by flipping bits
+    invalid_checksum[icmp_offset + 2] ^= 0xFF; // corrupt checksum high byte
     fix_ipv4_total_length(invalid_checksum);
     fix_ipv4_checksum(invalid_checksum);
     tests.push_back({invalid_checksum, ValidationError::ICMP_INVALID_CHECKSUM});
@@ -763,38 +714,8 @@ void run_icmp_tests() {
     std::cout << oss.str();
 }
 
-/*
-void run_capture_test() {
-
-}
-*/
 
 
-int main() {
-
-    run_ethernet_tests();
-    run_arp_tests();
-    run_ipv4_tests();
-    run_tcp_tests();
-    run_udp_tests();
-    run_icmp_tests();
-
-    /* RAW CAPTURE TEST
-    int res = raw_capture_test();    
-    if(res!= 0){
-        return 1;
-    }
-    */
-
-    int res = run_capture_test();
-    if(res!=0) {
-        return res;
-    }
-    return 0;
-}
-
-
-/*
 int run_capture_test() {
     std::cout << "\n==== RAW CAPTURE TEST ====\n";
 
@@ -807,75 +728,42 @@ int run_capture_test() {
 
     constexpr std::size_t MAX_FRAME_SIZE = 65536;
     std::vector<uint8_t> buffer(MAX_FRAME_SIZE);
-
     int captured = 0;
+    int num_pkts= 5;
 
-    while (captured < 5) {
+    while (captured < num_pkts) {
         ssize_t bytes = capture.read_frame(buffer.data(), buffer.size());
-
         if (bytes <= 0) {
             continue; // try again
         }
 
-        std::cout << "\n--- Packet " << captured + 1
-                  << " (" << bytes << " bytes) ---\n";
+        std::cout << "\n--- Packet " << captured + 1 << " (" << bytes << " bytes) ---";
 
-        ParsedPacket pkt = parse_packet(
-            std::span<const uint8_t>(buffer.data(), bytes)
-        );
-
+        ParsedPacket pkt = parse_packet(std::span<const uint8_t>(buffer.data(), bytes));
         PacketValidator validator(pkt.view);
-
-        // Print summary
-        pkt.view.print();
-        validator.print_errors();
-
         captured++;
     }
 
-    std::cout << "\nCaptured and processed 5 packets successfully.\n";
-    return 0;
-}
-    */
-
-/*
-// RAW CAPTURE TEST
-int run_capture_test(){
-    SocketCapture capture;
-
-    if (!capture.valid()) {
-        std::cerr << "Raw socket capture failed.\n";
-        return 1;
-    }
-
-    constexpr std::size_t MAX_FRAME_SIZE = 65536;
-    std::vector<uint8_t> buffer(MAX_FRAME_SIZE);
-
-    int captured = 0;
-
-    while (captured < 10) {
-        ssize_t bytes = capture.read_frame(buffer.data(), buffer.size());
-
-        if (bytes <= 0) {
-            continue;
-        }
-
-        std::cout << "\n=== Packet " << captured  << " (" << bytes << " bytes) ===\n";
-
-        ParsedPacket packet = parse_packet(
-            std::span<const uint8_t>(buffer.data(), bytes)
-        );
-
-        packet.view.print();
-
-        PacketValidator validator(packet.view);
-        validator.print_errors();
-
-        captured++;
-    }
-
-    std::cout << "\nCaptured and processed 10 packets.\n";
+    std::cout << "\nCaptured and processed " << captured << " packets successfully.\n";
     return 0;
 }
 
-*/
+
+
+
+
+int main() {
+
+    run_ethernet_tests();
+    run_arp_tests();
+    run_ipv4_tests();
+    run_tcp_tests();
+    run_udp_tests();
+    run_icmp_tests();
+
+    int res = run_capture_test();
+    if(res!=0) {
+        return res;
+    }
+    return 0;
+}

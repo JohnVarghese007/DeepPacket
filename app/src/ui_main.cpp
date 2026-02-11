@@ -40,6 +40,9 @@ struct PacketRow {
     int length;
     std::string info;
     std::vector<uint8_t> bytes;
+    std::vector<std::string> layers;
+    std::vector<std::pair<std::string, std::string>> fields; // field name, value pairs
+    std::vector<std::string> validationErrors;
 };
 
 
@@ -75,26 +78,14 @@ static std::vector<PacketRow> packets;
 /*
     ======= DEEPPACKET HEADER BAR =======
 */
-/*
-void DrawHeaderBar() {
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 1)); // solid black
-    ImGui::BeginChild("HeaderBar", ImVec2(0, 32), true);
 
-    ImGui::PushFont(ImGui::GetFont()); // use default font for now
-    ImGui::TextColored(ImVec4(1, 1, 1, 1), "DeepPacket");
-    ImGui::PopFont();
-
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
-}
-*/
 void DrawHeaderBar() {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.05f, 0.05f, 0.05f, 1.0f)); // near-black
     ImGui::BeginChild("HeaderBar", ImVec2(0, 32), true);
 
     ImGui::PushFont(ImGui::GetFont()); // default font for now
 
-    ImGui::SetCursorPosX(10); // slight left padding
+    ImGui::SetCursorPosX(10); //left padding of 10 px
     ImGui::TextColored(ImVec4(1, 1, 1, 1), "DeepPacket");
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Network Protocol Analyzer");
@@ -230,8 +221,7 @@ void DrawHexViewer(const std::vector<uint8_t>& data) {
     // -------------------------
     // LEFT OFFSET SIDEBAR
     // -------------------------
-    ImGui::BeginChild("OffsetBar", ImVec2(80, ImGui::GetContentRegionAvail().y), true,
-                      ImGuiWindowFlags_NoScrollbar);
+    ImGui::BeginChild("OffsetBar", ImVec2(80, ImGui::GetContentRegionAvail().y), true, ImGuiWindowFlags_NoScrollbar);
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.12f, 0.12f, 0.12f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.25f, 0.25f, 0.25f, 1.0f));
@@ -394,16 +384,11 @@ int main() {
         DrawHeaderBar();
         DrawControlBar();
 
-        // --- REAL CAPTURE PIPELINE ---
+        // --- CAPTURE PIPELINE ---
         static SocketCapture capture;
         //static bool capturing = false;
         static std::vector<uint8_t> buffer(65536);
 
-        /*
-        if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
-            capturing = !capturing;
-        }
-        */
 
         if (capturing && capture.valid()) {
             ssize_t bytes = capture.read_frame(buffer.data(), buffer.size());
@@ -418,7 +403,7 @@ int main() {
                 row.number = packets.size() + 1;
                 row.time = ImGui::GetTime();
 
-                // Extract safely
+                // Extract json fields for the gui display
                 if (j.contains("layers") && j["layers"].contains("ipv4")) {
                     row.src = j["layers"]["ipv4"]["src_ip"];
                     row.dest = j["layers"]["ipv4"]["dst_ip"];

@@ -4,7 +4,7 @@
 
 ## Overview
 - DeepPacket is a network packet inspection tool inspired by Wireshark.
-- It captures raw Ethernet frames, parses protocol layers and validates packet fields with a zero-copy design to minimize parser overhead.
+- It captures raw Ethernet frames from a Linux network interface, parses protocol layers and validates packet fields with a zero-copy design to minimize parser overhead.
 - Main goal was to build something similar to wireshark at least on a very tiny scale.
 
 ## Features
@@ -12,23 +12,30 @@
 ### Current Features
 - Live packet capture using Linux sockets
 - Zero-copy parsing + Validation pipeline that currently supports the following:
+    - Ethernet
     - IPv4
     - ARP
     - TCP
     - UDP
-- Fairly elaborate test suite
-- Very very minimal GUI with working start/stop capture
+    - ICMP
+- Fairly extensive test suite
+- Very minimal GUI (working start/stop capture and a hex dump)
 - Real time display of parsed packet fields with validation results
 
 ### Planned Features:
-- IPv6 support yet to be added to parser + validation which is literally most of the traffic
+- IPv6 support yet to be added to parser + validation 
+- Multi-threaded pipeline (gui currently cannot keep up with capture/parser aand freezes a lot)
+- Auto-detect / choose network interface (currently hardcoded into raw-capture.cpp as "enp0s3")
 - Other protocols may be optionally added
 - More polish for GUI
 
 ## Build
 - This Project uses CMake
-- Run the following commands to build the project:
+- Follow these steps to build the project:
     - Navigate to project-root folder
+    - change interface name in parser/src/raw-capture.cpp (Currently hardcoded) and hit save.
+
+- Now run the follwing in the terminal from the project-root
 
 ```bash
 rm -rf build
