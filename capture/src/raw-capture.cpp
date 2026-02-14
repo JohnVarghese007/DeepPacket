@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include "raw-capture.hpp"
+#include "spsc_ring_buffer.hpp"
 
 /* 
     This is an implementation of the SocketCapture class
