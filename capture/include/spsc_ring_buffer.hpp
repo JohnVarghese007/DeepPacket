@@ -76,6 +76,17 @@ public:
         return true; 
     }
 
+    bool push(T&& val) {
+        std::size_t cur = write_idx.load(std::memory_order_relaxed);
+        std::size_t next = next_index(cur);
+        if (next == read_idx.load(std::memory_order_acquire)) return false;
+
+        new (buffer[cur].ptr()) T(std::move(val));
+
+        write_idx.store(next, std::memory_order_release);
+        return true;
+    }
+
 
     template <typename... Args> 
     bool try_emplace(Args&&... args) {
@@ -100,6 +111,17 @@ public:
 
         read_idx.store(next_index(cur), std::memory_order_release);
         return true; 
+    }
+
+    template <typename OutputIt>
+    std::size_t pop_batch(OutputIt out, std::size_t max_count) {
+        std::size_t count = 0;
+        T temp;
+        while (count < max_count && pop(temp)) {
+            *out++ = std::move(temp);
+            ++count;
+        }
+        return count;
     }
 
     std::size_t capacity() const noexcept { 

@@ -90,15 +90,3 @@ Test#   Expected                                Received                        
 
 
 ==== RAW CAPTURE TEST ====
-
---- Packet 1 (74 bytes) ---
-
---- Packet 2 (110 bytes) ---
-
---- Packet 3 (213 bytes) ---
-
---- Packet 4 (60 bytes) ---
-
---- Packet 5 (60 bytes) ---
-
-Captured and processed 5 packets successfully.

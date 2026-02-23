@@ -11,11 +11,16 @@
 #include <cstring>
 #include <sstream>
 #include <iostream>
+#include <optional>
+#include <algorithm>
+#include <cstdio>
+#include <arpa/inet.h>
 
 #include "raw-capture.hpp"
 #include "parser.hpp"
 #include "validation.hpp"
 #include "serialization.hpp"
+#include "capture_controller.hpp"
 
 
 // Forward declarations
@@ -45,9 +50,50 @@ struct PacketRow {
     std::vector<std::string> validationErrors;
 };
 
-
+static CaptureController controller;
 static int selectedIndex = -1;     // default selected packet index
 static bool capturing = false;    // capture state
+static std::vector<std::string> interfaceOptions;
+static int selectedInterfaceIndex = 0;
+static int cachedDetailIndex = -1;
+static std::vector<uint8_t> cachedDetailBytes;
+static std::optional<ParsedPacket> cachedDetailPacket;
+static std::optional<PacketValidator> cachedDetailValidator;
+
+static const char* ProtocolToString(TransportProtocol protocol) {
+    switch (protocol) {
+        case TransportProtocol::TCP:  return "TCP";
+        case TransportProtocol::UDP:  return "UDP";
+        case TransportProtocol::ICMP: return "ICMP";
+        case TransportProtocol::ARP:  return "ARP";
+        default:                      return "UNKNOWN";
+    }
+}
+
+static const char* ValidationToString(ValidationStatus status) {
+    switch (status) {
+        case ValidationStatus::OK:    return "OK";
+        case ValidationStatus::ERROR: return "ERROR";
+        default:                      return "UNKNOWN";
+    }
+}
+
+static std::string MacToString(const uint8_t mac[6]) {
+    char buf[18] = {};
+    std::snprintf(
+        buf,
+        sizeof(buf),
+        "%02X:%02X:%02X:%02X:%02X:%02X",
+        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+    );
+    return std::string(buf);
+}
+
+static std::string IPv4ToString(uint32_t addr) {
+    char buf[INET_ADDRSTRLEN] = {};
+    inet_ntop(AF_INET, &addr, buf, sizeof(buf));
+    return std::string(buf);
+}
 /*
 static std::vector<PacketRow> dummyPackets = {
     {1, 1.180f, "68.114.59.204", "223.241.140.13", "TCP", 71, "17601 → 53 [FIN]", {0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, 0x11, 0x01} },
@@ -56,7 +102,7 @@ static std::vector<PacketRow> dummyPackets = {
 };
 */
 
-static std::vector<PacketRow> packets;
+//static std::vector<PacketRow> packets;
 
 /*
     ======= THEME =======
@@ -119,11 +165,38 @@ void DrawControlBar() {
     ImGui::SetNextItemWidth(100);
     ImGui::Combo("##proto", &protoIndex, protos, IM_ARRAYSIZE(protos));
 
+    // Interface dropdown
+    ImGui::SameLine(0, 12);
+    ImGui::Text("Interface:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(140);
+
+    if (!interfaceOptions.empty()) {
+        if (selectedInterfaceIndex < 0 || selectedInterfaceIndex >= static_cast<int>(interfaceOptions.size())) {
+            selectedInterfaceIndex = 0;
+        }
+
+        std::vector<const char*> iface_labels;
+        iface_labels.reserve(interfaceOptions.size());
+        for (const auto& iface : interfaceOptions) {
+            iface_labels.push_back(iface.c_str());
+        }
+
+        ImGui::Combo("##iface", &selectedInterfaceIndex, iface_labels.data(), static_cast<int>(iface_labels.size()));
+    } else {
+        ImGui::BeginDisabled();
+        const char* none[] = { "N/A" };
+        int dummy = 0;
+        ImGui::Combo("##iface", &dummy, none, 1);
+        ImGui::EndDisabled();
+    }
+
     // Capture controls (right-aligned)
     ImGui::SameLine();
     ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 180);
 
     //static bool capturing = false;
+    /*
     if (!capturing) {
         if (ImGui::Button("Start Capture", ImVec2(120, 0))) {
             capturing = true;
@@ -132,6 +205,24 @@ void DrawControlBar() {
         if (ImGui::Button("Stop", ImVec2(120, 0))) {
             capturing = false;
         }
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0, 1, 0, 1), "LIVE");
+    }
+*/
+    if (!capturing) {
+        if (ImGui::Button("Start Capture", ImVec2(120, 0))) {
+            const std::string selected_interface =
+                (!interfaceOptions.empty() && selectedInterfaceIndex >= 0 && selectedInterfaceIndex < static_cast<int>(interfaceOptions.size()))
+                    ? interfaceOptions[static_cast<std::size_t>(selectedInterfaceIndex)]
+                    : std::string("enp0s3");
+
+            capturing = controller.start_live_capture(selected_interface);
+        }
+    } else {
+        if (ImGui::Button("Stop", ImVec2(120, 0))) {
+            capturing = false;
+            controller.stop_capture();
+        }        
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(0, 1, 0, 1), "LIVE");
     }
@@ -154,6 +245,35 @@ void DrawLeftPane() {
     ImGui::Text("Packet List");
     ImGui::Separator();
 
+    const auto& summaries = controller.get_summaries();
+    static std::vector<std::string> row_no_cache;
+    static std::vector<std::string> row_time_cache;
+    static std::vector<std::string> row_proto_cache;
+
+    if (row_no_cache.size() > summaries.size()) {
+        row_no_cache.resize(summaries.size());
+        row_time_cache.resize(summaries.size());
+        row_proto_cache.resize(summaries.size());
+    }
+
+    if (row_no_cache.size() < summaries.size()) {
+        const std::size_t old_size = row_no_cache.size();
+        row_no_cache.resize(summaries.size());
+        row_time_cache.resize(summaries.size());
+        row_proto_cache.resize(summaries.size());
+
+        for (std::size_t i = old_size; i < summaries.size(); ++i) {
+            const auto& s = summaries[i];
+            row_no_cache[i] = std::to_string(i + 1);
+            row_proto_cache[i] = ProtocolToString(s.protocol);
+
+            const double time_seconds = static_cast<double>(s.timestamp.count()) / 1'000'000.0;
+            char time_buf[32] = {};
+            std::snprintf(time_buf, sizeof(time_buf), "%.3f", time_seconds);
+            row_time_cache[i] = time_buf;
+        }
+    }
+    
     if (ImGui::BeginTable("PacketTable", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("No.");
         ImGui::TableSetupColumn("Time");
@@ -163,21 +283,28 @@ void DrawLeftPane() {
         ImGui::TableSetupColumn("Length");
         ImGui::TableHeadersRow();
 
-        for (std::size_t i = 0; i < packets.size(); i++) {
-            const auto& pkt = packets[i];
+        ImGuiListClipper clipper;
+        clipper.Begin(static_cast<int>(summaries.size()));
 
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
+        while (clipper.Step()) {
+            for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+                const std::size_t i = static_cast<std::size_t>(row);
+                const auto& s = summaries[i];
 
-            if (ImGui::Selectable(std::to_string(pkt.number).c_str(), selectedIndex == i, ImGuiSelectableFlags_SpanAllColumns)) {
-                selectedIndex = i;
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+
+                const bool is_selected = (selectedIndex >= 0) && (selectedIndex == row);
+                if (ImGui::Selectable(row_no_cache[i].c_str(), is_selected, ImGuiSelectableFlags_SpanAllColumns)) {
+                    selectedIndex = row;
+                }
+
+                ImGui::TableNextColumn(); ImGui::TextUnformatted(row_time_cache[i].c_str());
+                ImGui::TableNextColumn(); ImGui::TextUnformatted(s.src_ip.c_str());
+                ImGui::TableNextColumn(); ImGui::TextUnformatted(s.dst_ip.c_str());
+                ImGui::TableNextColumn(); ImGui::TextUnformatted(row_proto_cache[i].c_str());
+                ImGui::TableNextColumn(); ImGui::Text("%u", s.length);
             }
-
-            ImGui::TableNextColumn(); ImGui::Text("%.3f", pkt.time);
-            ImGui::TableNextColumn(); ImGui::Text("%s", pkt.src.c_str());
-            ImGui::TableNextColumn(); ImGui::Text("%s", pkt.dest.c_str());
-            ImGui::TableNextColumn(); ImGui::Text("%s", pkt.protocol.c_str());
-            ImGui::TableNextColumn(); ImGui::Text("%d", pkt.length);
         }
 
         ImGui::EndTable();
@@ -188,21 +315,79 @@ void DrawLeftPane() {
 
 
 
-void DrawPacketDetails(const PacketRow& pkt) {
+void DrawPacketDetails(const ParsedPacket& pkt, const PacketValidator& validator) {
     ImGui::Text("Protocol Layers:");
-    ImGui::BulletText("Ethernet");
-    ImGui::BulletText("IPv4");
-    ImGui::BulletText("%s", pkt.protocol.c_str());
-
     ImGui::Separator();
-    ImGui::Text("Fields:");
-    ImGui::BulletText("Source IP: %s", pkt.src.c_str());
-    ImGui::BulletText("Destination IP: %s", pkt.dest.c_str());
-    ImGui::BulletText("Length: %d", pkt.length);
 
-    ImGui::Separator();
-    ImGui::TextColored(ImVec4(1, 1, 0, 1), "Validation: Checksum mismatch");
+    // Ethernet
+    if (pkt.view.has_eth) {
+        ImGui::Text("Ethernet");
+        ImGui::Indent();
+        ImGui::Text("Src MAC: %s", MacToString(pkt.view.eth_layer.eth->src_mac).c_str());
+        ImGui::Text("Dst MAC: %s", MacToString(pkt.view.eth_layer.eth->dest_mac).c_str());
+        ImGui::Text("Type: 0x%04X", ntohs(pkt.view.eth_layer.eth->ether_type));
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    // IPv4
+    if (pkt.view.has_ip) {
+        ImGui::Text("IPv4");
+        ImGui::Indent();
+        ImGui::Text("Src IP: %s", IPv4ToString(pkt.view.ip_layer.iph->src_addr).c_str());
+        ImGui::Text("Dst IP: %s", IPv4ToString(pkt.view.ip_layer.iph->dest_addr).c_str());
+        ImGui::Text("TTL: %u", pkt.view.ip_layer.iph->ttl);
+        ImGui::Text("Protocol: %u", pkt.view.ip_layer.iph->protocol);
+        ImGui::Text("Header Checksum: 0x%04X", ntohs(pkt.view.ip_layer.iph->header_checksum));
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    // TCP
+    if (pkt.view.has_tcp) {
+        ImGui::Text("TCP");
+        ImGui::Indent();
+        ImGui::Text("Src Port: %u", ntohs(pkt.view.tcp_layer.tcph->src_port));
+        ImGui::Text("Dst Port: %u", ntohs(pkt.view.tcp_layer.tcph->dest_port));
+        ImGui::Text("Seq: %u", ntohl(pkt.view.tcp_layer.tcph->seq_num));
+        ImGui::Text("Ack: %u", ntohl(pkt.view.tcp_layer.tcph->ack_num));
+        ImGui::Text("Flags: 0x%02X", pkt.view.tcp_layer.tcph->flags);
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    // UDP
+    if (pkt.view.has_udp) {
+        ImGui::Text("UDP");
+        ImGui::Indent();
+        ImGui::Text("Src Port: %u", ntohs(pkt.view.udp_layer.udph->src));
+        ImGui::Text("Dst Port: %u", ntohs(pkt.view.udp_layer.udph->dest));
+        ImGui::Text("Length: %u", ntohs(pkt.view.udp_layer.udph->length));
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    // ICMP
+    if (pkt.view.has_icmp) {
+        ImGui::Text("ICMP");
+        ImGui::Indent();
+        ImGui::Text("Type: %u", pkt.view.icmp_layer.icmph->type);
+        ImGui::Text("Code: %u", pkt.view.icmp_layer.icmph->code);
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    // Validation
+    ImGui::Text("Validation:");
+    ImGui::Indent();
+    for (auto err : validator.errors) {
+        if (err != ValidationError::NONE) {
+            ImGui::TextColored(ImVec4(1, 0.2f, 0.2f, 1), "%s", to_string(err).c_str());
+        }
+    }
+    ImGui::Unindent();
 }
+
 
 
 // VALIDATION PANEL
@@ -284,35 +469,168 @@ void DrawHexViewer(const std::vector<uint8_t>& data) {
 
 // RRIGHT PANE
 void DrawRightPane() {
-    //ImGui::BeginChild("RightPane", ImVec2(0, 0), true);
-
     ImGui::Text("Packet Details");
     ImGui::Separator();
 
-    if (selectedIndex >= 0) {
-        const PacketRow& pkt = packets[selectedIndex];
-
-        ImGui::BeginChild("LayerView", ImVec2(0, ImGui::GetWindowHeight() * 0.4f), true);
-        DrawPacketDetails(pkt);
-        ImGui::EndChild();
-
-        ImGui::Separator();
-
-        // Hex Viewer
-        DrawHexViewer(pkt.bytes);
-
-    } else {
+    if (selectedIndex < 0) {
         ImGui::Text("No packet selected.");
+        return;
     }
 
-   // ImGui::EndChild();
+    // --- Retrieve summaries + raw bytes ---
+    const auto& summaries = controller.get_summaries();
+    if (selectedIndex >= (int)summaries.size()) {
+        ImGui::Text("Invalid selection.");
+        return;
+    }
+
+    const PacketSummary& summary = summaries[selectedIndex];
+
+    // --- TOP: Summary fields from PacketSummary ---
+    ImGui::BeginChild("SummaryFields", ImVec2(0, ImGui::GetWindowHeight() * 0.28f), true);
+
+    ImGui::Text("Summary Fields");
+    ImGui::Separator();
+
+    const double ts_seconds = static_cast<double>(summary.timestamp.count()) / 1'000'000.0;
+    ImGui::Text("Timestamp: %.6f s", ts_seconds);
+    ImGui::Text("Source IP: %s", summary.src_ip.c_str());
+    ImGui::Text("Destination IP: %s", summary.dst_ip.c_str());
+    ImGui::Text("Source Port: %u", summary.src_port);
+    ImGui::Text("Destination Port: %u", summary.dst_port);
+    ImGui::Text("Protocol: %s", ProtocolToString(summary.protocol));
+    ImGui::Text("Length: %u", summary.length);
+    ImGui::Text("Validation: %s", ValidationToString(summary.validation));
+    ImGui::Text("TCP Flags: 0x%02X", summary.tcp_flags);
+
+    ImGui::EndChild();
+
+    ImGui::Separator();
+
+    // Get raw bytes for this packet
+    PacketView view = controller.get_packet_view(selectedIndex);
+    if (view.data == nullptr || view.size() == 0) {
+        cachedDetailIndex = -1;
+        cachedDetailBytes.clear();
+        cachedDetailPacket.reset();
+        cachedDetailValidator.reset();
+        ImGui::Text("Packet data unavailable.");
+        return;
+    }
+
+    // --- Re-parse + validate only when selection changes ---
+    if (cachedDetailIndex != selectedIndex || !cachedDetailPacket.has_value() || !cachedDetailValidator.has_value()) {
+        cachedDetailBytes.assign(view.data, view.data + view.size());
+        cachedDetailPacket.emplace(parse_packet(std::span<const uint8_t>(cachedDetailBytes.data(), cachedDetailBytes.size())));
+        cachedDetailValidator.emplace(cachedDetailPacket->view);
+        cachedDetailIndex = selectedIndex;
+    }
+
+    const ParsedPacket& pkt = *cachedDetailPacket;
+    const PacketValidator& validator = *cachedDetailValidator;
+
+    // --- TOP: Layer + Field Breakdown ---
+    ImGui::BeginChild("LayerView", ImVec2(0, ImGui::GetWindowHeight() * 0.34f), true);
+
+    ImGui::Text("Layers");
+    ImGui::Separator();
+
+    // Ethernet
+    if (pkt.view.has_eth) {
+        ImGui::Text("Ethernet");
+        ImGui::Indent();
+        ImGui::Text("Src MAC: %s", MacToString(pkt.view.eth_layer.eth->src_mac).c_str());
+        ImGui::Text("Dst MAC: %s", MacToString(pkt.view.eth_layer.eth->dest_mac).c_str());
+        ImGui::Text("Ethertype: 0x%04X", ntohs(pkt.view.eth_layer.eth->ether_type));
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    // IPv4
+    if (pkt.view.has_ip) {
+        ImGui::Text("IPv4");
+        ImGui::Indent();
+        ImGui::Text("Src IP: %s", IPv4ToString(pkt.view.ip_layer.iph->src_addr).c_str());
+        ImGui::Text("Dst IP: %s", IPv4ToString(pkt.view.ip_layer.iph->dest_addr).c_str());
+        ImGui::Text("TTL: %u", pkt.view.ip_layer.iph->ttl);
+        ImGui::Text("Protocol: %u", pkt.view.ip_layer.iph->protocol);
+        ImGui::Text("Header Checksum: 0x%04X", ntohs(pkt.view.ip_layer.iph->header_checksum));
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    // TCP
+    if (pkt.view.has_tcp) {
+        ImGui::Text("TCP");
+        ImGui::Indent();
+        ImGui::Text("Src Port: %u", ntohs(pkt.view.tcp_layer.tcph->src_port));
+        ImGui::Text("Dst Port: %u", ntohs(pkt.view.tcp_layer.tcph->dest_port));
+        ImGui::Text("Seq: %u", ntohl(pkt.view.tcp_layer.tcph->seq_num));
+        ImGui::Text("Ack: %u", ntohl(pkt.view.tcp_layer.tcph->ack_num));
+        ImGui::Text("Flags: 0x%02X", pkt.view.tcp_layer.tcph->flags);
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    // UDP
+    if (pkt.view.has_udp) {
+        ImGui::Text("UDP");
+        ImGui::Indent();
+        ImGui::Text("Src Port: %u", ntohs(pkt.view.udp_layer.udph->src));
+        ImGui::Text("Dst Port: %u", ntohs(pkt.view.udp_layer.udph->dest));
+        ImGui::Text("Length: %u", ntohs(pkt.view.udp_layer.udph->length));
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    // ICMP
+    if (pkt.view.has_icmp) {
+        ImGui::Text("ICMP");
+        ImGui::Indent();
+        ImGui::Text("Type: %u", pkt.view.icmp_layer.icmph->type);
+        ImGui::Text("Code: %u", pkt.view.icmp_layer.icmph->code);
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    // Validation
+    ImGui::Text("Validation");
+    ImGui::Indent();
+    bool ok = true;
+    for (auto err : validator.errors) {
+        if (err != ValidationError::NONE) {
+            ok = false;
+            ImGui::TextColored(ImVec4(1, 0.2f, 0.2f, 1), "%s", to_string(err).c_str());
+        }
+    }
+    if (ok) {
+        ImGui::TextColored(ImVec4(0.2f, 1, 0.2f, 1), "OK");
+    }
+    ImGui::Unindent();
+
+    ImGui::EndChild();
+
+    ImGui::Separator();
+
+    // --- BOTTOM: Hex Viewer ---
+    std::vector<uint8_t> bytes(view.data, view.data + view.size());
+    DrawHexViewer(bytes);
 }
+
 
 
 // FOOTER
 void DrawFooter() {
     ImGui::BeginChild("Footer", ImVec2(0, 20), false);
-    ImGui::Text("Packets: %zu | Displayed: %zu", packets.size(), packets.size());
+    const auto& summaries = controller.get_summaries();
+    const CaptureStats stats = controller.get_stats();
+    ImGui::Text(
+        "Packets: %zu | Displayed: %zu | Captured: %llu | Dropped: %llu",
+        summaries.size(),
+        summaries.size(),
+        static_cast<unsigned long long>(stats.packets_captured),
+        static_cast<unsigned long long>(stats.packets_dropped)
+    );
     ImGui::EndChild();
 }
 
@@ -354,6 +672,19 @@ int main() {
     // setup imgui style
     ImGui::StyleColorsDark();
 
+    interfaceOptions = controller.list_interfaces();
+    if (interfaceOptions.empty()) {
+        interfaceOptions.push_back("enp0s3");
+        selectedInterfaceIndex = 0;
+    } else {
+        auto it = std::find(interfaceOptions.begin(), interfaceOptions.end(), "enp0s3");
+        if (it != interfaceOptions.end()) {
+            selectedInterfaceIndex = static_cast<int>(std::distance(interfaceOptions.begin(), it));
+        } else {
+            selectedInterfaceIndex = 0;
+        }
+    }
+
     // Setup Platform/Renderer Backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
@@ -384,42 +715,13 @@ int main() {
         DrawHeaderBar();
         DrawControlBar();
 
-        // --- CAPTURE PIPELINE ---
-        static SocketCapture capture;
-        //static bool capturing = false;
-        static std::vector<uint8_t> buffer(65536);
-
-
-        if (capturing && capture.valid()) {
-            ssize_t bytes = capture.read_frame(buffer.data(), buffer.size());
-
-            if (bytes > 0) {
-                ParsedPacket pkt = parse_packet(std::span<const uint8_t>(buffer.data(), bytes));
-                PacketValidator validator(pkt.view);
-
-                nlohmann::json j = packet_to_json(pkt.view, validator);
-
-                PacketRow row;
-                row.number = packets.size() + 1;
-                row.time = ImGui::GetTime();
-
-                // Extract json fields for the gui display
-                if (j.contains("layers") && j["layers"].contains("ipv4")) {
-                    row.src = j["layers"]["ipv4"]["src_ip"];
-                    row.dest = j["layers"]["ipv4"]["dst_ip"];
-                } else {
-                    row.src = "N/A";
-                    row.dest = "N/A";
-                }
-
-                row.protocol = j["summary"]["protocol"];
-                row.length = j["summary"]["length"];
-                row.info = j["summary"]["validation_status"];
-                row.bytes = j["raw"]["bytes"].get<std::vector<uint8_t>>();
-
-                packets.push_back(row);
-            }
+        // --- CAPTURE PIPELINE (Controller-driven, non-blocking) ---
+        if (capturing) {
+            controller.poll();
         }
+
+
+        
 
 
 
