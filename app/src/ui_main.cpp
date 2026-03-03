@@ -153,7 +153,7 @@ void DrawControlBar() {
     ImGui::Text("Filter:");
     ImGui::SameLine();
 
-    // Filter input
+    // Filter input (placeholder for now, actual filtering to be implemented later)
     static char filterBuf[128] = "";
     ImGui::SetNextItemWidth(250);
     ImGui::InputTextWithHint("##filter", "ip.addr == 192.168.0.1", filterBuf, sizeof(filterBuf));
