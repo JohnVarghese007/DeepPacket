@@ -245,7 +245,7 @@ void DrawLeftPane() {
     ImGui::Text("Packet List");
     ImGui::Separator();
 
-    const auto& summaries = controller.get_summaries();
+    const auto& summaries = controller.get_summaries_snapshot();
     static std::vector<std::string> row_no_cache;
     static std::vector<std::string> row_time_cache;
     static std::vector<std::string> row_proto_cache;
@@ -478,7 +478,7 @@ void DrawRightPane() {
     }
 
     // --- Retrieve summaries + raw bytes ---
-    const auto& summaries = controller.get_summaries();
+    const auto& summaries = controller.get_summaries_snapshot();
     if (selectedIndex >= (int)summaries.size()) {
         ImGui::Text("Invalid selection.");
         return;
@@ -613,8 +613,7 @@ void DrawRightPane() {
     ImGui::Separator();
 
     // --- BOTTOM: Hex Viewer ---
-    std::vector<uint8_t> bytes(view.data, view.data + view.size());
-    DrawHexViewer(bytes);
+    DrawHexViewer(cachedDetailBytes);
 }
 
 
@@ -622,7 +621,7 @@ void DrawRightPane() {
 // FOOTER
 void DrawFooter() {
     ImGui::BeginChild("Footer", ImVec2(0, 20), false);
-    const auto& summaries = controller.get_summaries();
+    const auto& summaries = controller.get_summaries_snapshot();
     const CaptureStats stats = controller.get_stats();
     ImGui::Text(
         "Packets: %zu | Displayed: %zu | Captured: %llu | Dropped: %llu",
@@ -713,15 +712,7 @@ int main() {
         );
 
         DrawHeaderBar();
-        DrawControlBar();
-
-        // --- CAPTURE PIPELINE (Controller-driven, non-blocking) ---
-        if (capturing) {
-            controller.poll();
-        }
-
-
-        
+        DrawControlBar();        
 
 
 

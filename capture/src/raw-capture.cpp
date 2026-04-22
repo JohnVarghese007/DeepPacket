@@ -46,13 +46,14 @@ SocketCapture::SocketCapture(const std::string& interface_name) {
 // Destructor
 SocketCapture::~SocketCapture() {
     running = false;
-
-    if(capture_thread.joinable()) {
-        capture_thread.join();
-    }
+    // unblocking recvfrom() by closing socket
     if(sock >= 0){
         close(sock);
     }
+    
+    if(capture_thread.joinable()) {
+        capture_thread.join();
+    }    
 }
 
 // If returned  value < 0, then socket creation failed

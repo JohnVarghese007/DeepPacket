@@ -64,7 +64,8 @@ public:
     void poll();
 
     // Accessors
-    const std::vector<PacketSummary>& get_summaries() const;
+    std::vector<PacketSummary> get_summaries_snapshot() const;
+
     CaptureStats get_stats() const;
 
     // Mode switching (v2)
@@ -98,6 +99,13 @@ private:
     mutable std::mutex stats_mutex;
 
     CaptureMode mode_ = CaptureMode::NONE;
+
+    // A separate thread for polling live capture to avoid blocking the main thread. Uses atomic flag for clean shutdown.
+    std::thread poll_thread;
+    std::atomic<bool> poll_running = false;
+    void start_polling();
+    void stop_polling();
+
 };
 
 
