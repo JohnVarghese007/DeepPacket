@@ -66,6 +66,7 @@ bool CaptureController::start_live_capture(const std::string& interface)
     }
 
     mode_ = CaptureMode::LIVE;
+    start_polling();
     // You can reset stats/summaries here if you want a fresh session:
     // clear_summaries();
     // reset_stats();
@@ -79,6 +80,7 @@ std::vector<std::string> CaptureController::list_interfaces() const
 
 void CaptureController::stop_capture()
 {
+    stop_polling();
     mode_ = CaptureMode::NONE;
     capture.reset();
 }
@@ -104,12 +106,32 @@ void CaptureController::poll()
     }
 }
 
-const std::vector<PacketSummary>& CaptureController::get_summaries() const
-{
-    // Caller must treat the returned reference as read-only.
-    // We guard writes with summaries_mutex.
-    return summaries;
+void CaptureController::start_polling() {
+    if (poll_running) return; // already running
+
+    poll_running = true;
+    poll_thread = std::thread([this]() {
+        while (poll_running) {
+            this->poll();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+    });
 }
+
+void CaptureController::stop_polling() {
+    poll_running = false;
+    if (poll_thread.joinable()) {
+        poll_thread.join();
+    }
+}
+
+
+std::vector<PacketSummary> CaptureController::get_summaries_snapshot() const
+{
+    std::lock_guard<std::mutex> lock(summaries_mutex);
+    return summaries;   // safe copy
+}
+
 
 CaptureStats CaptureController::get_stats() const
 {
