@@ -178,7 +178,6 @@ sudo ./build/app/DeepPacketUI
 
 ![DeepPacket Screenshot](./media/image.png)
 
-*(Replace `screenshot.png` with your actual screenshot filename.)*
 
 ---
 
