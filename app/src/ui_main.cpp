@@ -15,6 +15,7 @@
 #include <optional>
 #include <algorithm>
 #include <cstdio>
+#include <cfloat>
 #include <arpa/inet.h>
 
 #include "raw-capture.hpp"
@@ -193,9 +194,7 @@ void DrawControlBar() {
         ImGui::EndDisabled();
     }
 
-    //
     // PCAP Controls (LEFT SIDE)
-    //
     ImGui::SameLine(0, 20);
 
     if (ImGui::Button("Load PCAP", ImVec2(120, 0))) {
@@ -747,6 +746,7 @@ int main() {
         DrawControlBar();    
         
         // Handle Open PCAP dialog
+        ImGui::SetNextWindowSize(ImVec2(900, 600), ImGuiCond_Always);
         if (ImGuiFileDialog::Instance()->Display("OpenPCAP")) {
             if (ImGuiFileDialog::Instance()->IsOk()) {
                 std::string path = ImGuiFileDialog::Instance()->GetFilePathName();
@@ -758,6 +758,7 @@ int main() {
         }
 
         // Handle Save PCAP dialog
+        ImGui::SetNextWindowSize(ImVec2(900, 600), ImGuiCond_Always);
         if (ImGuiFileDialog::Instance()->Display("SavePCAP")) {
             if (ImGuiFileDialog::Instance()->IsOk()) {
                 std::string path = ImGuiFileDialog::Instance()->GetFilePathName();
