@@ -24,6 +24,7 @@ DeepPacket aims to replicate a small, educational subset of Wireshark’s functi
 Another point of focus was stability. DeepPacket is built with minimal external dependencies.  
 It does not use libpcap or third‑party protocol parsers — all capture, parsing, validation, and serialization logic is implemented manually.  
 Only lightweight UI/runtime libraries (ImGui, ImGuiFileDialog, GLFW) are used.
+
 ---
 
 ## Current Features
