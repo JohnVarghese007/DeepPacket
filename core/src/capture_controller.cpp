@@ -1,4 +1,6 @@
 #include "capture_controller.hpp"
+#include "pcap_reader.hpp"
+#include "pcap_writer.hpp"
 
 #include <chrono>
 #include <span>
@@ -84,6 +86,98 @@ void CaptureController::stop_capture()
     mode_ = CaptureMode::NONE;
     capture.reset();
 }
+
+bool CaptureController::start_pcap_ingest(const std::string& filename) {
+    // stop live capture if currently running
+    stop_capture();
+
+    // load pcap file
+    PcapReader reader(filename);
+    if (!reader.valid()) {
+        return false;
+    }
+
+    std::vector<PcapPacket> packets;
+    if (!reader.read_all(packets)) {
+        return false;
+    }
+
+    // reset state
+    {
+        std::scoped_lock lock(summaries_mutex, stats_mutex);
+        summaries.clear();
+        raw_packets.clear();
+        stats = CaptureStats{};
+    }
+
+    mode_ = CaptureMode::PCAP;
+
+    // Process packets synchronously
+    for (const auto& pkt : packets) {
+        const uint8_t* data = pkt.data.data();
+        size_t len = pkt.data.size();
+
+        // Parse
+        ParsedPacket parsed = parse_packet(std::span<const uint8_t>(data, len));
+
+        // Validate
+        PacketValidator validator(parsed.view);
+
+        // Build summary
+        PacketSummary summary = make_summary(parsed, validator);
+        summary.ts_sec = pkt.ts_sec;
+        summary.ts_usec = pkt.ts_usec;
+
+        // store summary and raw bytes
+        {
+            std::scoped_lock lock(summaries_mutex);
+            summaries.push_back(summary);
+            raw_packets.emplace_back(data, data + len);
+        }
+
+        // Update stats
+        {
+            std::scoped_lock lock(stats_mutex);
+            stats.packets_captured++;
+            stats.packets_parsed++;
+            stats.packets_validated++;
+        }
+    }
+
+    return true;
+}
+
+
+
+bool CaptureController::export_pcap(const std::string& filename) const
+{
+    if (raw_packets.empty()) {
+        return false;
+    }
+
+    PcapWriter writer(filename);
+    if (!writer.valid()) {
+        return false;
+    }
+
+    std::scoped_lock lock(summaries_mutex);
+
+    for (size_t i = 0; i < raw_packets.size(); i++) {
+        const auto& bytes = raw_packets[i];
+        const auto& summary = summaries[i];
+
+        writer.write_packet(
+            bytes.data(),
+            bytes.size(),
+            summary.ts_sec,
+            summary.ts_usec
+        );
+    }
+
+    return true;
+}
+
+
 
 void CaptureController::poll()
 {

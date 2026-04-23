@@ -57,6 +57,10 @@ public:
     bool start_live_capture(const std::string& interface);
     void stop_capture();
 
+    // PCAP import + export
+    bool start_pcap_ingest(const std::string& filename);
+    bool export_pcap(const std::string& filename) const;
+
     // Interface discovery for UI
     std::vector<std::string> list_interfaces() const;
 
