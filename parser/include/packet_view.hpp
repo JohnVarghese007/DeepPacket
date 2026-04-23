@@ -3,6 +3,10 @@
 #include <cstddef>
 #include <cstdint>
 
+
+namespace dp {
+namespace parser {
+
 class PacketView {
 public:
 
@@ -18,12 +22,12 @@ public:
     bool has_udp;
     bool has_icmp;
     
-    EthernetLayer eth_layer;
-    ARPLayer arp_layer;
-    IPv4Layer ip_layer;
-    TCPLayer tcp_layer;
-    UDPLayer udp_layer;
-    ICMPLayer icmp_layer;
+    layers::EthernetLayer eth_layer;
+    layers::ARPLayer arp_layer;
+    layers::IPv4Layer ip_layer;
+    layers::TCPLayer tcp_layer;
+    layers::UDPLayer udp_layer;
+    layers::ICMPLayer icmp_layer;
     const uint8_t* payload;
     size_t payload_len;
 
@@ -44,3 +48,7 @@ public:
 private:
     void parse_layers();
 };
+
+
+} // namespace parser
+} // namespace dp

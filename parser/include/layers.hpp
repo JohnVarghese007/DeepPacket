@@ -8,6 +8,10 @@
 #include <vector>
 
 
+namespace dp {
+namespace parser {
+namespace layers {
+
 // LAYER 2 -> Ethernet Layer
 class EthernetLayer {
 public: 
@@ -104,4 +108,8 @@ public:
 
 };
 
+
+} // namespace layers
+} // namespace parser
+} // namespace dp
 

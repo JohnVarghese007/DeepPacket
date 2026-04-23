@@ -1,6 +1,10 @@
 #pragma once
 #include <cstdint>
 
+
+namespace dp {
+namespace parser {
+
 #pragma pack(push, 1)
 
 // LAYER 2 -> Ethernet Header
@@ -101,3 +105,6 @@ enum class L4Type {
     ICMP,
     UNKNOWN
 };
+
+} // namespace parser
+} // namespace dp

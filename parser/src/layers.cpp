@@ -4,6 +4,9 @@
 #include <sstream>
 #include <arpa/inet.h>
 
+
+namespace dp::parser::layers {
+
 // TCP FLAG OFFSETS
 #define FIN_FLAG 0x01
 #define SYN_FLAG 0x02
@@ -276,4 +279,6 @@ size_t ICMPLayer::header_size() const {
 
     return res;
 }
+
+} // namespace dp::parser::layers
 

@@ -3,6 +3,10 @@
 #include <cstdint>
 #include "packet_view.hpp"
 
+namespace dp {
+namespace parser {
+    
+
 struct ParsedPacket {
 public:
     std::span<const uint8_t> buffer;
@@ -14,3 +18,6 @@ public:
 
 // Main parser API 
 ParsedPacket parse_packet(std::span<const uint8_t> buffer);
+
+} // namespace parser
+} // namespace dp

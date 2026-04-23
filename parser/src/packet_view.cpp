@@ -4,6 +4,9 @@
 #include <iomanip>
 #include <arpa/inet.h>
 
+
+namespace dp::parser {
+
 #define ICMP_PROTOCOL_VALUE 1
 #define TCP_PROTOCOL_VALUE 6
 #define UDP_PROTOCOL_VALUE 17
@@ -37,7 +40,7 @@ void PacketView::parse_layers() {
     if (length < sizeof(EthernetHeader)) {
         return; 
     }
-    eth_layer = EthernetLayer(data);
+    eth_layer = layers::EthernetLayer(data);
     has_eth = true;
 
     // EtherType check(ARP, IPv4)
@@ -45,7 +48,7 @@ void PacketView::parse_layers() {
 
     if (ethertype == ARP_ETHERTYPE) {
         // ARP Layer
-        arp_layer = ARPLayer(data + eth_layer.header_size());
+        arp_layer = layers::ARPLayer(data + eth_layer.header_size());
         has_arp = true;
     }
     else if (ethertype == IPv4_ETHERTYPE) {
@@ -54,7 +57,7 @@ void PacketView::parse_layers() {
         if (length < ip_offset + 1) {
             return;
         }
-        ip_layer = IPv4Layer(data + ip_offset);
+        ip_layer = layers::IPv4Layer(data + ip_offset);
         has_ip = true;
 
         // Looking at ihl bits to determine IPv4 header size
@@ -76,7 +79,7 @@ void PacketView::parse_layers() {
             if (length < l4_offset + 1) {
                 return;
             }
-            tcp_layer = TCPLayer(data + l4_offset);
+            tcp_layer = layers::TCPLayer(data + l4_offset);
             has_tcp = true;
 
             size_t tcp_header_len = ((tcp_layer.tcph->data_offset >> 4) & 0x0F) * 4;
@@ -97,7 +100,7 @@ void PacketView::parse_layers() {
                 return;
             }
             // UDP branch
-            udp_layer = UDPLayer(data + l4_offset);
+            udp_layer = layers::UDPLayer(data + l4_offset);
             has_udp = true;
 
             size_t udp_header_len = MINIMUM_UDP_HEADER_SIZE;
@@ -119,7 +122,7 @@ void PacketView::parse_layers() {
             }
 
             // Parse ICMP
-            icmp_layer = ICMPLayer(data + l4_offset);
+            icmp_layer = layers::ICMPLayer(data + l4_offset);
             has_icmp = true;
 
             size_t icmp_header_len = icmp_layer.header_size();
@@ -187,3 +190,5 @@ void PacketView::print(std::ostream& os) const {
     os << "=====================================" << std::endl;
 }
 
+
+} // namespace dp::parser
