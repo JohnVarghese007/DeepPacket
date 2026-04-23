@@ -19,6 +19,8 @@ enum class ValidationStatus {
 
 struct PacketSummary {
     std::chrono::microseconds timestamp{0};
+    uint32_t ts_sec = 0;
+    uint32_t ts_usec = 0;
 
     // IPv4 addresses 
     std::string src_ip;

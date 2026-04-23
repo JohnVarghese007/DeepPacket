@@ -13,4 +13,5 @@ target_link_libraries(core
         capture
         parser
         validation
+        pcap
 )

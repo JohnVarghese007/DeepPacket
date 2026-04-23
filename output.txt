@@ -88,5 +88,3 @@ Test#   Expected                                Received                        
 
 =======================
 
-
-==== RAW CAPTURE TEST ====

@@ -1,4 +1,5 @@
 #include "imgui.h"
+#include "ImGuiFileDialog.h"
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
 #include <GLFW/glfw3.h>
@@ -14,6 +15,7 @@
 #include <optional>
 #include <algorithm>
 #include <cstdio>
+#include <cfloat>
 #include <arpa/inet.h>
 
 #include "raw-capture.hpp"
@@ -153,7 +155,7 @@ void DrawControlBar() {
     ImGui::Text("Filter:");
     ImGui::SameLine();
 
-    // Filter input (placeholder for now, actual filtering to be implemented later)
+    // Filter input
     static char filterBuf[128] = "";
     ImGui::SetNextItemWidth(250);
     ImGui::InputTextWithHint("##filter", "ip.addr == 192.168.0.1", filterBuf, sizeof(filterBuf));
@@ -172,7 +174,7 @@ void DrawControlBar() {
     ImGui::SetNextItemWidth(140);
 
     if (!interfaceOptions.empty()) {
-        if (selectedInterfaceIndex < 0 || selectedInterfaceIndex >= static_cast<int>(interfaceOptions.size())) {
+        if (selectedInterfaceIndex < 0 || selectedInterfaceIndex >= (int)interfaceOptions.size()) {
             selectedInterfaceIndex = 0;
         }
 
@@ -182,7 +184,8 @@ void DrawControlBar() {
             iface_labels.push_back(iface.c_str());
         }
 
-        ImGui::Combo("##iface", &selectedInterfaceIndex, iface_labels.data(), static_cast<int>(iface_labels.size()));
+        ImGui::Combo("##iface", &selectedInterfaceIndex, iface_labels.data(),
+                     (int)iface_labels.size());
     } else {
         ImGui::BeginDisabled();
         const char* none[] = { "N/A" };
@@ -191,44 +194,72 @@ void DrawControlBar() {
         ImGui::EndDisabled();
     }
 
-    // Capture controls (right-aligned)
-    ImGui::SameLine();
-    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 180);
+    // PCAP Controls (LEFT SIDE)
+    ImGui::SameLine(0, 20);
 
-    //static bool capturing = false;
-    /*
-    if (!capturing) {
-        if (ImGui::Button("Start Capture", ImVec2(120, 0))) {
-            capturing = true;
-        }
-    } else {
-        if (ImGui::Button("Stop", ImVec2(120, 0))) {
-            capturing = false;
-        }
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0, 1, 0, 1), "LIVE");
+    if (ImGui::Button("Load PCAP", ImVec2(120, 0))) {
+        IGFD::FileDialogConfig config;
+        config.path = ".";
+        ImGuiFileDialog::Instance()->OpenDialog(
+            "OpenPCAP", "Open PCAP File", ".pcap", config
+        );
     }
-*/
-    if (!capturing) {
-        if (ImGui::Button("Start Capture", ImVec2(120, 0))) {
-            const std::string selected_interface =
-                (!interfaceOptions.empty() && selectedInterfaceIndex >= 0 && selectedInterfaceIndex < static_cast<int>(interfaceOptions.size()))
-                    ? interfaceOptions[static_cast<std::size_t>(selectedInterfaceIndex)]
-                    : std::string("enp0s3");
 
-            capturing = controller.start_live_capture(selected_interface);
-        }
-    } else {
-        if (ImGui::Button("Stop", ImVec2(120, 0))) {
-            capturing = false;
-            controller.stop_capture();
-        }        
+    ImGui::SameLine();
+
+    if (ImGui::Button("Export PCAP", ImVec2(120, 0))) {
+        IGFD::FileDialogConfig config;
+        config.path = ".";
+        ImGuiFileDialog::Instance()->OpenDialog(
+            "SavePCAP", "Save PCAP File", ".pcap", config
+        );
+    }
+
+    //
+    // NOW push Start/Stop to the right
+    //
+    float rightAlignX = ImGui::GetWindowWidth() - 180;
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(rightAlignX);
+
+    //
+    // Capture controls
+    //
+    if (controller.mode() == CaptureMode::PCAP) {
+        ImGui::BeginDisabled();
+        ImGui::Button("Start Capture", ImVec2(120, 0));
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0, 1, 0, 1), "LIVE");
+        ImGui::Button("Stop", ImVec2(120, 0));
+        ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1, 0.8f, 0, 1), "PCAP MODE");
+    }
+    else {
+        if (!capturing) {
+            if (ImGui::Button("Start Capture", ImVec2(120, 0))) {
+                const std::string selected_interface =
+                    (!interfaceOptions.empty() &&
+                     selectedInterfaceIndex >= 0 &&
+                     selectedInterfaceIndex < (int)interfaceOptions.size())
+                        ? interfaceOptions[selectedInterfaceIndex]
+                        : "enp0s3";
+
+                capturing = controller.start_live_capture(selected_interface);
+            }
+        } else {
+            if (ImGui::Button("Stop", ImVec2(120, 0))) {
+                capturing = false;
+                controller.stop_capture();
+            }
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0, 1, 0, 1), "LIVE");
+        }
     }
 
     ImGui::EndChild();
 }
+
 
 
 // RESIZABLE SPLITTER
@@ -653,7 +684,7 @@ int main() {
 
 
     // create window
-    GLFWwindow* window = glfwCreateWindow(1200, 720, "ImGui Practice", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1200, 720, "DeepPacket", nullptr, nullptr);
     if(window == nullptr) {
         return 1;
     }
@@ -712,7 +743,30 @@ int main() {
         );
 
         DrawHeaderBar();
-        DrawControlBar();        
+        DrawControlBar();    
+        
+        // Handle Open PCAP dialog
+        ImGui::SetNextWindowSize(ImVec2(900, 600), ImGuiCond_Always);
+        if (ImGuiFileDialog::Instance()->Display("OpenPCAP")) {
+            if (ImGuiFileDialog::Instance()->IsOk()) {
+                std::string path = ImGuiFileDialog::Instance()->GetFilePathName();
+                controller.start_pcap_ingest(path);
+                capturing = false;
+                selectedIndex = -1;
+            }
+            ImGuiFileDialog::Instance()->Close();
+        }
+
+        // Handle Save PCAP dialog
+        ImGui::SetNextWindowSize(ImVec2(900, 600), ImGuiCond_Always);
+        if (ImGuiFileDialog::Instance()->Display("SavePCAP")) {
+            if (ImGuiFileDialog::Instance()->IsOk()) {
+                std::string path = ImGuiFileDialog::Instance()->GetFilePathName();
+                controller.export_pcap(path);
+            }
+            ImGuiFileDialog::Instance()->Close();
+        }
+
 
 
 

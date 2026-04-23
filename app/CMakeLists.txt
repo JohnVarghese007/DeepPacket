@@ -7,11 +7,15 @@ add_executable(DeepPacketUI
     ${CMAKE_SOURCE_DIR}/third_party/imgui/imgui_widgets.cpp
     ${CMAKE_SOURCE_DIR}/third_party/imgui/backends/imgui_impl_glfw.cpp
     ${CMAKE_SOURCE_DIR}/third_party/imgui/backends/imgui_impl_opengl3.cpp
+    ${CMAKE_SOURCE_DIR}/third_party/ImGuiFileDialog/ImGuiFileDialog.cpp
 )
 
 target_include_directories(DeepPacketUI PRIVATE
     ${CMAKE_SOURCE_DIR}/third_party/imgui
     ${CMAKE_SOURCE_DIR}/third_party/imgui/backends
+    ${CMAKE_SOURCE_DIR}/third_party/ImGuiFileDialog
+    ${CMAKE_SOURCE_DIR}/third_party/ImGuiFileDialogConfig
+
 )
 
 find_package(OpenGL REQUIRED)
