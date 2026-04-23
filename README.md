@@ -22,7 +22,7 @@ The project explores systems-level engineering concepts including:
 DeepPacket aims to replicate a small, educational subset of Wireshark’s functionality while maintaining a clean, modular architecture. The modular architecture of the parser and validation layers allow seamless integration of more protocols in addition to the ones natively supported.
 
 Another point of focus was stability. DeepPacket is built with minimal external dependencies.  
-It does **not** use libpcap or third‑party protocol parsers — all capture, parsing, validation, and serialization logic is implemented manually.  
+It does not use libpcap or third‑party protocol parsers — all capture, parsing, validation, and serialization logic is implemented manually.  
 Only lightweight UI/runtime libraries (ImGui, ImGuiFileDialog, GLFW) are used.
 ---
 
