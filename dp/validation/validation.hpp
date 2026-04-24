@@ -1,6 +1,6 @@
 #pragma once
-#include "packet_view.hpp"
-#include "packet-error.hpp"
+#include "dp/parser/packet_view.hpp"
+#include "dp/validation/packet-error.hpp"
 #include <vector>
 
 
@@ -9,10 +9,10 @@ namespace validation {
 
 class PacketValidator {
 public:
-    const PacketView& view;
+    const dp::parser::PacketView& view;
     std::vector<ValidationError> errors;
     
-    PacketValidator(const PacketView& v) 
+    PacketValidator(const dp::parser::PacketView& v) 
         : view(v)
     {
         validate_packet();
@@ -24,13 +24,12 @@ public:
 
 
 private:
-    static bool validate_ethernet(const PacketView& view, ValidationError& error);
-    static bool validate_arp(const PacketView& view, ValidationError& error);
-    static bool validate_ipv4(const PacketView& view, ValidationError& error);
-    static bool validate_tcp(const PacketView& view, ValidationError& error);
-    static bool validate_udp(const PacketView& view, ValidationError& error);
-    static bool validate_icmp(const PacketView& view, ValidationError& error);    
-
+    static bool validate_ethernet(const dp::parser::PacketView& view, ValidationError& error);
+    static bool validate_arp(const dp::parser::PacketView& view, ValidationError& error);
+    static bool validate_ipv4(const dp::parser::PacketView& view, ValidationError& error);
+    static bool validate_tcp(const dp::parser::PacketView& view, ValidationError& error);
+    static bool validate_udp(const dp::parser::PacketView& view, ValidationError& error);
+    static bool validate_icmp(const dp::parser::PacketView& view, ValidationError& error);    
 };
 
 

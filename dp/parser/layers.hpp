@@ -1,6 +1,6 @@
 #pragma once
 
-#include "packet.hpp"
+#include "dp/parser/packet.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <cstring>

@@ -364,3 +364,6 @@ PacketSummary CaptureController::make_summary(const dp::parser::ParsedPacket& pk
 
     return s;
 }
+
+
+} // namespace dp::core

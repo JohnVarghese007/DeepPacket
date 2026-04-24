@@ -13,7 +13,7 @@
 #include <cstring>
 #include <vector>
 #include <string>
-#include "spsc_ring_buffer.hpp" 
+#include "dp/capture/spsc_ring_buffer.hpp" 
 
 
 namespace dp {

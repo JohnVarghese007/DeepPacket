@@ -29,6 +29,30 @@ Only lightweight UI/runtime libraries (ImGui, ImGuiFileDialog, GLFW) are used.
 
 ## Current Features
 
+DeepPacket is organized around a unified engine namespace (dp/), with each subsystem implemented as a modular component and compiled into a single static library (dp_engine).
+
+```bash
+DeepPacket/
+├── dp/                  # Core engine (dp_engine)
+│   ├── core/            # High-level orchestration (capture control, summaries)
+│   ├── capture/         # Raw socket capture + ring buffer
+│   ├── parser/          # Zero-copy protocol parsing
+│   ├── validation/      # RFC-aware validation logic
+│   ├── serialization/   # Export/load functionality
+│   └── pcap/            # PCAP reader/writer
+│
+├── app/                 # ImGui-based UI application
+├── tests/               # Unit and integration tests
+├── third_party/         # External dependencies (ImGui, GLFW, etc.)
+└── build/               # Build output (generated)
+```
+
+All modules under dp/ share a consistent namespace (dp::<module>) and are designed to be composable, allowing the UI and test suite to reuse the same packet processing pipeline.
+
+---
+
+## Current Features
+
 ### Capture & PCAP
 
 * Live packet capture using Linux raw sockets
@@ -155,19 +179,19 @@ From the project root:
 
 The build produces:
 
-* `DeepPacketTests` — test suite
-* `DeepPacketUI` — graphical packet analyzer
+* `deeppacket-tests` — test suite
+* `deeppacket` — graphical packet analyzer
 
 ### 3. Run Tests
 
 ```bash
-sudo ./build/tests/DeepPacketTests > output.txt
+sudo ./build/tests/deeppacket-tests > output.txt
 ```
 
 ### 4. Run the UI
 
 ```bash
-sudo ./build/app/DeepPacketUI
+sudo ./build/app/deeppacket
 ```
 
 > Root privileges are required for raw socket capture.

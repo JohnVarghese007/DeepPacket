@@ -1,7 +1,7 @@
 #pragma once
 #include <span>
 #include <cstdint>
-#include "packet_view.hpp"
+#include "dp/parser/packet_view.hpp"
 
 namespace dp {
 namespace parser {
