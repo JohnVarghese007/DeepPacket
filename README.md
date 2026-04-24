@@ -2,14 +2,15 @@
 
 A zero-copy network packet inspection tool with live capture, protocol parsing, validation, and a lightweight Wireshark-style UI.
 
-> **Status:** v1 close to completion
+> **Status:** v1 complete
+> (IPv6 + Python bindings planned)
 
 ---
 
 ## Overview
 
 DeepPacket is a lightweight packet analysis tool inspired by Wireshark.
-It captures raw Ethernet frames from a Linux network interface, parses protocol layers, validates fields against RFC rules, and displays results in a custom ImGui-based UI.
+It captures raw Ethernet frames from a Linux network interface, parses protocol layers, validates fields against RFC rules, and displays results through both a custom ImGui-based UI and a headless command-line interface (dpctl).
 
 The project explores systems-level engineering concepts including:
 
@@ -18,10 +19,11 @@ The project explores systems-level engineering concepts including:
 * RFC-aware validation
 * Real-time UI rendering
 * PCAP ingestion and export
+* Non-blocking CLI for live capture and analysis.
 
 DeepPacket aims to replicate a small, educational subset of Wireshark’s functionality while maintaining a clean, modular architecture. The modular architecture of the parser and validation layers allow seamless integration of more protocols in addition to the ones natively supported.
 
-Another point of focus is stability and minimalism.  
+A major design goal is stability and minimalism.  
 DeepPacket is built with **no libpcap** and **no third‑party protocol parsers** — all capture, parsing, validation, and serialization logic is implemented manually.  
 Only lightweight UI libraries (Dear ImGui and ImGuiFileDialog) are vendored; platform components such as GLFW and OpenGL are used as **system dependencies**.
 
@@ -34,7 +36,7 @@ DeepPacket is organized around a unified engine namespace (dp/), with each subsy
 ```bash
 DeepPacket/
 ├── dp/                  # Core engine (dp_engine)
-│   ├── engine/          # Unified engine façade 
+│   ├── engine/          # Unified DeepPacket API
 │   ├── core/            # High-level orchestration (capture control, summaries)
 │   ├── capture/         # Raw socket capture (linux only for now) + ring buffer
 │   ├── parser/          # Zero-copy protocol parsing
@@ -44,6 +46,7 @@ DeepPacket/
 │
 ├── app/                 # ImGui-based UI application
 ├── tests/               # Unit and integration tests
+├── cli/                 # dpctl cli
 ├── third_party/         # Vendored dependencies (ImGui, ImGuiFileDialog)
 └── build/               # Build output (generated)
 ```
@@ -87,6 +90,19 @@ Zero-copy parsing + validation for:
 * Interface selection
 * Filter input (UI only for now, functionality yet to be implemented)
 
+### CLI (dpctl)
+
+* Non‑blocking interactive REPL for live capture and PCAP analysis
+* Real‑time packet stream output with indices, IPs, protocol, length, and validation status
+* Commands include:
+  - interfaces — list available network interfaces
+  - live <iface> — start live capture
+  - stop — stop live capture
+  - read <pcap> — load and summarize a PCAP file
+  - view <index> — detailed packet breakdown in text form
+  - export <pcap> — export current capture to PCAP
+  - info, help, quit
+
 ### Validation
 
 * Field-level validation for supported protocols
@@ -101,6 +117,30 @@ Zero-copy parsing + validation for:
   * Validation
   * Serialization
   * PCAP read/write
+
+---
+
+## Why DeepPacket ?
+
+DeepPacket is not a wrapper around libpcap or a thin UI over existing packet libraries.
+It is a **from‑scratch** packet inspection engine designed to expose how packet capture, parsing, and validation actually work beneath higher‑level tools like Wireshark.
+
+Most packet analyzers rely heavily on libpcap for capture, buffering, filtering, and device abstraction.
+
+DeepPacket instead implements:
+- Raw socket capture without external dependencies(linux-only, extendable due to modular architecture)
+- Zero‑copy parsing for predictable, low‑latency performance
+- RFC‑aware validation for detecting malformed or offloaded packets
+- A clean, modular backend engine shared by both UI and CLI
+- A small, readable codebase suitable for teaching and experimentation
+
+This makes DeepPacket ideal for:
+- Systems programming and networking education
+- Research prototypes and custom protocol experimentation
+- Embedded or constrained environments where large dependencies are undesirable
+
+DeepPacket focuses on clarity, control, and modularity.
+It is intentionally minimal, making it easier to understand, extend, and integrate than large, production‑scale tools.
 
 ---
 
@@ -145,14 +185,9 @@ This design ensures:
 - predictable performance  
 - minimal latency between capture and display  
 
-### Why This Matters
-
-Unlike tools that rely on libpcap or heavy middleware, DeepPacket’s capture → queue → UI pipeline is built entirely from scratch.  
-This provides full control over performance characteristics and makes the project a genuine systems‑engineering effort rather than a wrapper around existing libraries.
-
 ---
 
-## Planned Features
+## Planned Features / Ideas for features
 
 * IPv6 parsing + validation
 * Additional pipeline parallelization.
@@ -160,7 +195,7 @@ This provides full control over performance characteristics and makes the projec
 * Optional migration to Qt-based UI 
 * Additional protocol support
 * Filter engine (BPF-like or custom)
-* CLI tool for headless analysis
+* CLI enhancements
 
 ---
 
@@ -182,6 +217,7 @@ The build produces:
 
 * `deeppacket-tests` — test suite
 * `deeppacket` — graphical packet analyzer
+* `dpctl` — command-line packet analyzer
 
 ### 3. Run Tests
 
@@ -193,6 +229,12 @@ sudo ./build/tests/deeppacket-tests > output.txt
 
 ```bash
 sudo ./build/app/deeppacket
+```
+
+### 5. Run the CLI
+
+```bash
+sudo ./build/cli/dpctl
 ```
 
 > Root privileges are required for raw socket capture.
@@ -221,6 +263,20 @@ DeepPacket also relies on the following **system-provided** dependencies:
 * **OpenGL** — Provided by the system’s graphics drivers (Mesa/NVIDIA/AMD)
 
 Only the vendored libraries are stored in the repository; system dependencies must be installed separately.
+
+---
+
+## License
+
+DeepPacket © 2026 John Varghese — All Rights Reserved
+Licensed under Creative Commons Attribution‑NonCommercial‑NoDerivatives 4.0 International  
+(CC BY‑NC‑ND 4.0)
+
+This license allows others to view and share the project with attribution,
+but prohibits commercial use, modification, or redistribution of derivative works.
+
+Full license text:
+https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 ---
 
