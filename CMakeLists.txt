@@ -31,6 +31,8 @@ add_library(dp_engine
     dp/pcap/pcap_writer.cpp
 
     dp/serialization/serialization.cpp
+
+    dp/engine/engine.cpp
 )
 
 target_include_directories(dp_engine PUBLIC
