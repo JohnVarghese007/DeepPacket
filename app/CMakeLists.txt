@@ -1,5 +1,4 @@
-# New ImGui/GLFW/OpenGL frontend
-add_executable(DeepPacketUI
+add_executable(deeppacket
     src/ui_main.cpp
     ${CMAKE_SOURCE_DIR}/third_party/imgui/imgui.cpp
     ${CMAKE_SOURCE_DIR}/third_party/imgui/imgui_draw.cpp
@@ -10,24 +9,18 @@ add_executable(DeepPacketUI
     ${CMAKE_SOURCE_DIR}/third_party/ImGuiFileDialog/ImGuiFileDialog.cpp
 )
 
-target_include_directories(DeepPacketUI PRIVATE
+target_include_directories(deeppacket PRIVATE
     ${CMAKE_SOURCE_DIR}/third_party/imgui
     ${CMAKE_SOURCE_DIR}/third_party/imgui/backends
     ${CMAKE_SOURCE_DIR}/third_party/ImGuiFileDialog
     ${CMAKE_SOURCE_DIR}/third_party/ImGuiFileDialogConfig
-
 )
 
 find_package(OpenGL REQUIRED)
 find_package(glfw3 REQUIRED)
 
-target_link_libraries(DeepPacketUI
-    PRIVATE
-        glfw
-        OpenGL::GL
-        parser
-        validation
-        capture
-        serialization
-        core
+target_link_libraries(deeppacket PRIVATE
+    dp_engine
+    glfw
+    OpenGL::GL
 )
