@@ -47,6 +47,15 @@ struct PacketSummary {
     uint8_t tcp_flags = 0;
 };
 
+inline const char* transport_proto_to_string(TransportProtocol proto) {
+    switch (proto) {
+        case TransportProtocol::TCP:   return "TCP";
+        case TransportProtocol::UDP:   return "UDP";
+        case TransportProtocol::ICMP:  return "ICMP";
+        case TransportProtocol::ARP:   return "ARP";
+        default:                       return "UNKNOWN";
+    }
+}
 
 } // namespace core
 } // namespace dp

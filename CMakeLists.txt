@@ -45,3 +45,4 @@ target_include_directories(dp_engine PUBLIC
 # -----------------------------
 add_subdirectory(app)
 add_subdirectory(tests)
+add_subdirectory(cli)

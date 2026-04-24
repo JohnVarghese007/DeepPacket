@@ -22,6 +22,9 @@ public:
     void print_errors(std::ostream& os) const;
     void print_raw_packet_bytes(std::ostream& os) const; 
 
+    // string representation of validation results (for CLI output)
+    std::string to_string() const;
+
 
 private:
     static bool validate_ethernet(const dp::parser::PacketView& view, ValidationError& error);

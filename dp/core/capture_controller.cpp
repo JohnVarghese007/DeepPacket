@@ -290,6 +290,10 @@ void CaptureController::process_packet(const uint8_t* data, size_t len)
     // Parse
     dp::parser::ParsedPacket pkt = dp::parser::parse_packet(std::span<const uint8_t>(data, len));
 
+    // Mark live-capture packets so validator can skip UDP checksum(to counter checksum offloading effects)
+    if(mode_ == CaptureMode::LIVE) {
+        pkt.view.is_live_capture = true;
+    }
     // Validate
     dp::validation::PacketValidator validator(pkt.view);
 
