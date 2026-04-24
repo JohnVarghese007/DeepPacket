@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(DeepPacket)
+project(DeepPacket LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,12 +11,35 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Add subdirectories
-add_subdirectory(parser)
-add_subdirectory(validation)
-add_subdirectory(capture)
+# -----------------------------
+# Engine Library (dp_engine)
+# -----------------------------
+add_library(dp_engine
+    dp/core/capture_controller.cpp
+    dp/core/packet_summary.cpp
+
+    dp/parser/layers.cpp
+    dp/parser/packet_view.cpp
+    dp/parser/parser.cpp
+
+    dp/validation/packet-error.cpp
+    dp/validation/validation.cpp
+
+    dp/capture/raw-capture.cpp
+
+    dp/pcap/pcap_reader.cpp
+    dp/pcap/pcap_writer.cpp
+
+    dp/serialization/serialization.cpp
+)
+
+target_include_directories(dp_engine PUBLIC
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/dp
+)
+
+# -----------------------------
+# Subdirectories
+# -----------------------------
 add_subdirectory(app)
 add_subdirectory(tests)
-add_subdirectory(serialization)
-add_subdirectory(core)
-add_subdirectory(pcap)

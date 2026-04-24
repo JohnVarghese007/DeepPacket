@@ -18,11 +18,10 @@
 #include <cfloat>
 #include <arpa/inet.h>
 
-#include "raw-capture.hpp"
-#include "parser.hpp"
-#include "validation.hpp"
-#include "serialization.hpp"
-#include "capture_controller.hpp"
+#include "dp/capture/raw-capture.hpp"
+#include "dp/parser/parser.hpp"
+#include "dp/validation/validation.hpp"
+#include "dp/core/capture_controller.hpp"
 
 
 // Forward declarations
@@ -52,30 +51,30 @@ struct PacketRow {
     std::vector<std::string> validationErrors;
 };
 
-static CaptureController controller;
+static dp::core::CaptureController controller;
 static int selectedIndex = -1;     // default selected packet index
 static bool capturing = false;    // capture state
 static std::vector<std::string> interfaceOptions;
 static int selectedInterfaceIndex = 0;
 static int cachedDetailIndex = -1;
 static std::vector<uint8_t> cachedDetailBytes;
-static std::optional<ParsedPacket> cachedDetailPacket;
-static std::optional<PacketValidator> cachedDetailValidator;
+static std::optional<dp::parser::ParsedPacket> cachedDetailPacket;
+static std::optional<dp::validation::PacketValidator> cachedDetailValidator;
 
-static const char* ProtocolToString(TransportProtocol protocol) {
+static const char* ProtocolToString(dp::core::TransportProtocol protocol) {
     switch (protocol) {
-        case TransportProtocol::TCP:  return "TCP";
-        case TransportProtocol::UDP:  return "UDP";
-        case TransportProtocol::ICMP: return "ICMP";
-        case TransportProtocol::ARP:  return "ARP";
+        case dp::core::TransportProtocol::TCP:  return "TCP";
+        case dp::core::TransportProtocol::UDP:  return "UDP";
+        case dp::core::TransportProtocol::ICMP: return "ICMP";
+        case dp::core::TransportProtocol::ARP:  return "ARP";
         default:                      return "UNKNOWN";
     }
 }
 
-static const char* ValidationToString(ValidationStatus status) {
+static const char* ValidationToString(dp::core::ValidationStatus status) {
     switch (status) {
-        case ValidationStatus::OK:    return "OK";
-        case ValidationStatus::ERROR: return "ERROR";
+        case dp::core::ValidationStatus::OK:    return "OK";
+        case dp::core::ValidationStatus::ERROR: return "ERROR";
         default:                      return "UNKNOWN";
     }
 }
@@ -225,7 +224,7 @@ void DrawControlBar() {
     //
     // Capture controls
     //
-    if (controller.mode() == CaptureMode::PCAP) {
+    if (controller.mode() == dp::core::CaptureMode::PCAP) {
         ImGui::BeginDisabled();
         ImGui::Button("Start Capture", ImVec2(120, 0));
         ImGui::SameLine();
@@ -346,7 +345,7 @@ void DrawLeftPane() {
 
 
 
-void DrawPacketDetails(const ParsedPacket& pkt, const PacketValidator& validator) {
+void DrawPacketDetails(const dp::parser::ParsedPacket& pkt, const dp::validation::PacketValidator& validator) {
     ImGui::Text("Protocol Layers:");
     ImGui::Separator();
 
@@ -412,8 +411,8 @@ void DrawPacketDetails(const ParsedPacket& pkt, const PacketValidator& validator
     ImGui::Text("Validation:");
     ImGui::Indent();
     for (auto err : validator.errors) {
-        if (err != ValidationError::NONE) {
-            ImGui::TextColored(ImVec4(1, 0.2f, 0.2f, 1), "%s", to_string(err).c_str());
+        if (err != dp::validation::ValidationError::NONE) {
+            ImGui::TextColored(ImVec4(1, 0.2f, 0.2f, 1), "%s", dp::validation::to_string(err).c_str());
         }
     }
     ImGui::Unindent();
@@ -515,7 +514,7 @@ void DrawRightPane() {
         return;
     }
 
-    const PacketSummary& summary = summaries[selectedIndex];
+    const dp::core::PacketSummary& summary = summaries[selectedIndex];
 
     // --- TOP: Summary fields from PacketSummary ---
     ImGui::BeginChild("SummaryFields", ImVec2(0, ImGui::GetWindowHeight() * 0.28f), true);
@@ -539,7 +538,7 @@ void DrawRightPane() {
     ImGui::Separator();
 
     // Get raw bytes for this packet
-    PacketView view = controller.get_packet_view(selectedIndex);
+    dp::parser::PacketView view = controller.get_packet_view(selectedIndex);
     if (view.data == nullptr || view.size() == 0) {
         cachedDetailIndex = -1;
         cachedDetailBytes.clear();
@@ -552,13 +551,15 @@ void DrawRightPane() {
     // --- Re-parse + validate only when selection changes ---
     if (cachedDetailIndex != selectedIndex || !cachedDetailPacket.has_value() || !cachedDetailValidator.has_value()) {
         cachedDetailBytes.assign(view.data, view.data + view.size());
-        cachedDetailPacket.emplace(parse_packet(std::span<const uint8_t>(cachedDetailBytes.data(), cachedDetailBytes.size())));
+        cachedDetailPacket.emplace(
+            dp::parser::parse_packet(std::span<const uint8_t>(cachedDetailBytes.data(), cachedDetailBytes.size()))
+        );
         cachedDetailValidator.emplace(cachedDetailPacket->view);
         cachedDetailIndex = selectedIndex;
     }
 
-    const ParsedPacket& pkt = *cachedDetailPacket;
-    const PacketValidator& validator = *cachedDetailValidator;
+    const dp::parser::ParsedPacket& pkt = *cachedDetailPacket;
+    const dp::validation::PacketValidator& validator = *cachedDetailValidator;
 
     // --- TOP: Layer + Field Breakdown ---
     ImGui::BeginChild("LayerView", ImVec2(0, ImGui::GetWindowHeight() * 0.34f), true);
@@ -629,9 +630,9 @@ void DrawRightPane() {
     ImGui::Indent();
     bool ok = true;
     for (auto err : validator.errors) {
-        if (err != ValidationError::NONE) {
+        if (err != dp::validation::ValidationError::NONE) {
             ok = false;
-            ImGui::TextColored(ImVec4(1, 0.2f, 0.2f, 1), "%s", to_string(err).c_str());
+            ImGui::TextColored(ImVec4(1, 0.2f, 0.2f, 1), "%s", dp::validation::to_string(err).c_str());
         }
     }
     if (ok) {
@@ -653,7 +654,7 @@ void DrawRightPane() {
 void DrawFooter() {
     ImGui::BeginChild("Footer", ImVec2(0, 20), false);
     const auto& summaries = controller.get_summaries_snapshot();
-    const CaptureStats stats = controller.get_stats();
+    const dp::core::CaptureStats stats = controller.get_stats();
     ImGui::Text(
         "Packets: %zu | Displayed: %zu | Captured: %llu | Dropped: %llu",
         summaries.size(),
