@@ -1,5 +1,6 @@
 #include "dp/validation/validation.hpp"
 #include <iostream>
+#include <sstream>
 #include <iomanip>
 #include <cstddef>
 #include <cstdint>
@@ -144,7 +145,7 @@ void  PacketValidator::validate_packet() {
 
 void PacketValidator::print_errors(std::ostream& os) const {
     for(ValidationError err: errors) {
-        os << to_string(err) << std::endl;
+        os << dp::validation::to_string(err) << std::endl;
     }
 
     // if there are no errors, not even NONE, that means validation never happened
@@ -174,6 +175,21 @@ void PacketValidator::print_raw_packet_bytes(std::ostream& os) const {
     os << std::dec << std::endl;
 }
 
+
+std::string PacketValidator::to_string() const {
+    std::ostringstream oss;
+    if (errors.empty()) {
+        oss << "Validation: OK\n";
+        return oss.str();
+    }
+
+    oss << "Validation Errors:\n";
+    for (auto err : errors) {
+        oss << "  - " << dp::validation::to_string(err) << "\n";
+    }
+
+    return oss.str();
+}
 
 
 bool PacketValidator::validate_ethernet(const PacketView& view, ValidationError& error) {
@@ -346,6 +362,11 @@ bool PacketValidator::validate_tcp(const PacketView& view, ValidationError& erro
         return false;
     }
 
+    // Skip TCP checksum validation for live capture (checksum offloading)
+    if (view.is_live_capture) {
+        return true;
+    }
+
     // Checksum validation for TCP
     const IPv4Header* iph = view.ip_layer.iph;
     const TCPHeader* tcph = view.tcp_layer.tcph;
@@ -415,6 +436,10 @@ bool PacketValidator::validate_udp(const PacketView& view, ValidationError& erro
         return false;
     }
 
+    // Skip UDP checksum validation for live capture (checksum offloading)
+    if (view.is_live_capture) {
+        return true;
+    }
     // Checksum validation for UDP
     const IPv4Header* iph = view.ip_layer.iph;
     const UDPHeader* udph = view.udp_layer.udph;

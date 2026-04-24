@@ -41,8 +41,14 @@ public:
     // Print Packet Details
     void print(std::ostream& os) const;
 
+    // String representation of packet view (for CLI output)
+    std::string to_string() const;
+
     // Get Packet Size
     size_t size() const { return length; }
+
+    // Live capture flag
+    bool is_live_capture = false;
 
     
 private:

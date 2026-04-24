@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <iomanip>
+#include <sstream>
 #include <arpa/inet.h>
 
 
@@ -188,6 +189,13 @@ void PacketView::print(std::ostream& os) const {
 
     os << "Payload Length: " << payload_len << " bytes" << std::endl;
     os << "=====================================" << std::endl;
+}
+
+// String representation of packet view (for CLI output)
+std::string PacketView::to_string() const {
+    std::ostringstream oss;
+    print(oss);
+    return oss.str();
 }
 
 
