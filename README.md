@@ -21,9 +21,9 @@ The project explores systems-level engineering concepts including:
 
 DeepPacket aims to replicate a small, educational subset of Wireshark’s functionality while maintaining a clean, modular architecture. The modular architecture of the parser and validation layers allow seamless integration of more protocols in addition to the ones natively supported.
 
-Another point of focus was stability. DeepPacket is built with minimal external dependencies.  
-It does not use libpcap or third‑party protocol parsers — all capture, parsing, validation, and serialization logic is implemented manually.  
-Only lightweight UI/runtime libraries (ImGui, ImGuiFileDialog, GLFW) are used.
+Another point of focus is stability and minimalism.  
+DeepPacket is built with **no libpcap** and **no third‑party protocol parsers** — all capture, parsing, validation, and serialization logic is implemented manually.  
+Only lightweight UI libraries (Dear ImGui and ImGuiFileDialog) are vendored; platform components such as GLFW and OpenGL are used as **system dependencies**.
 
 ---
 
@@ -44,7 +44,7 @@ DeepPacket/
 │
 ├── app/                 # ImGui-based UI application
 ├── tests/               # Unit and integration tests
-├── third_party/         # External dependencies (ImGui, GLFW, etc.)
+├── third_party/         # Vendored dependencies (ImGui, ImGuiFileDialog)
 └── build/               # Build output (generated)
 ```
 
@@ -208,13 +208,19 @@ sudo ./build/app/deeppacket
 
 ## Third-Party Libraries
 
-DeepPacket vendors a small set of open-source libraries:
+DeepPacket vendors a small set of lightweight UI libraries:
 
-* [Dear ImGui](https://github.com/ocornut/imgui) — Immediate-mode GUI framework (MIT)
+* [Dear ImGui](https://github.com/ocornut/imgui) — Immediate‑mode GUI framework (MIT)
 * [ImGuiFileDialog](https://github.com/aiekick/ImGuiFileDialog) — File dialog widget for ImGui (MIT)
-* [GLFW](https://github.com/glfw/glfw) — Windowing + input backend (zlib/libpng)
 
-All licenses for these libraries are included in the `third_party/` directory.
+These libraries are included directly in the `third_party/` directory.
+
+DeepPacket also relies on the following **system-provided** dependencies:
+
+* **GLFW** — Windowing + input backend (zlib/libpng), installed via system package manager  
+* **OpenGL** — Provided by the system’s graphics drivers (Mesa/NVIDIA/AMD)
+
+Only the vendored libraries are stored in the repository; system dependencies must be installed separately.
 
 ---
 
