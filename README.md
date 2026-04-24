@@ -34,8 +34,9 @@ DeepPacket is organized around a unified engine namespace (dp/), with each subsy
 ```bash
 DeepPacket/
 ├── dp/                  # Core engine (dp_engine)
+│   ├── engine/          # Unified engine façade 
 │   ├── core/            # High-level orchestration (capture control, summaries)
-│   ├── capture/         # Raw socket capture + ring buffer
+│   ├── capture/         # Raw socket capture (linux only for now) + ring buffer
 │   ├── parser/          # Zero-copy protocol parsing
 │   ├── validation/      # RFC-aware validation logic
 │   ├── serialization/   # Export/load functionality
