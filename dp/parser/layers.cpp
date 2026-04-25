@@ -333,7 +333,7 @@ ICMPv6Layer::ICMPv6Layer(const uint8_t *packet) {
         case 2:
         case 3:
         case 4:
-            error = reinterpret_cast<const ICMPv6Error*>(packet + fixed_offset);
+            error = reinterpret_cast<const ICMPv6Error*>(packet + fixed_offset);    
             break;
 
         // echo

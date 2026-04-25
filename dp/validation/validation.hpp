@@ -30,9 +30,12 @@ private:
     static bool validate_ethernet(const dp::parser::PacketView& view, ValidationError& error);
     static bool validate_arp(const dp::parser::PacketView& view, ValidationError& error);
     static bool validate_ipv4(const dp::parser::PacketView& view, ValidationError& error);
+    static bool validate_ipv6(const dp::parser::PacketView& view, ValidationError& error);
+    static bool validate_icmpv4(const dp::parser::PacketView& view, ValidationError& error);
+    static bool validate_icmpv6(const dp::parser::PacketView& view, ValidationError& error);
     static bool validate_tcp(const dp::parser::PacketView& view, ValidationError& error);
     static bool validate_udp(const dp::parser::PacketView& view, ValidationError& error);
-    static bool validate_icmp(const dp::parser::PacketView& view, ValidationError& error);    
+           
 };
 
 
