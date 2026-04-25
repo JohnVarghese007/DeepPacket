@@ -5,13 +5,32 @@
 namespace dp {
 namespace parser {
 
+
+/*
+    NOTE 
+    ----
+    This file uses OSI-style naming for clarity:
+
+      - Layer 2  : Ethernet (Data Link)
+      - Layer 2.5: ARP (Link/Network boundary)
+      - Layer 3  : IPv4 / IPv6 (Network Layer)
+      - Layer 4  : TCP / UDP (Transport Layer)
+
+    ICMPv4 and ICMPv6 are not Transport-layer protocols.
+    They are Network-layer control protocols carried inside IP.
+    However, they appear as "next protocol" after IPv4/IPv6,
+    so they are grouped with Transport-layer parsing in PacketView.
+
+*/
+
+
 #pragma pack(push, 1)
 
 // LAYER 2 -> Ethernet Header
 struct EthernetHeader {
     uint8_t dest_mac[6];  
     uint8_t src_mac[6];   
-    uint16_t ether_type;  // (0x0800, 0x0806 etc.)
+    uint16_t ether_type;  // (0x0800, 0x86DD etc.)
 };
 
 
@@ -44,6 +63,18 @@ struct IPv4Header {
     uint32_t dest_addr;         // Destination IP address
 };
 
+
+// LAYER 3 -> IPv6 Header
+struct IPv6Header {
+    uint32_t ver_tc_fl;     // Version (4) + Traffic Class (8) + Flow Label (20)
+    uint16_t payload_length;
+    uint8_t  next_header;   // L4 protocol or extension header
+    uint8_t  hop_limit;
+    uint8_t  src_addr[16];
+    uint8_t  dest_addr[16];
+};
+
+
 // LAYER 4 -> TCP Header
 struct TCPHeader {
     uint16_t src_port;
@@ -65,44 +96,64 @@ struct UDPHeader {
     uint16_t checksum;
 };
 
-// LAYER 4 -> ICMP Fixed Header
-struct ICMPFixedHeader {
+// LAYER 4 -> ICMPv4 fixed header
+struct ICMPv4Header {
     uint8_t type;
     uint8_t code;
     uint16_t checksum;
 };
 
-// ICMP variable headers depending on type
+// ICMPv4 variable headers depending on type
 // type 0 or 8
-struct ICMPEcho {
+struct ICMPv4Echo {
     uint16_t identifier;
     uint16_t sequence;
 };
 
 // type 3
-struct ICMPDestUnreach {
+struct ICMPv4DestUnreach {
     uint32_t data; // unused or mtu depending on code
 };
 
 // type 5
-struct ICMPRedirect {
+struct ICMPv4Redirect {
     uint32_t gateway_ip;
 };
 
 // type 12
-struct ICMPParamProblem {
+struct ICMPv4ParamProblem {
     uint8_t pointer;
     uint8_t unused[3];
+};
+
+// Network Layer Control Protocol -> ICMPv6 fixed header
+struct ICMPv6Header {
+    uint8_t type;
+    uint8_t code;
+    uint16_t checksum;
+};
+
+// ICMPv6 variable headers depending on type
+// types 1, 2, 3, 4
+struct ICMPv6Error {
+    uint32_t data; // unused or mtu depending on type/code
+};
+
+// type 128 or 129
+struct ICMPv6Echo {
+    uint16_t identifier;
+    uint16_t sequence;
 };
 
 #pragma pack(pop)
 
 
-// Supported L4 Protocols
-enum class L4Type {
+// Supported IP Protocols
+enum class IpProto {
     TCP,
     UDP,
-    ICMP,
+    ICMPv4,
+    ICMPv6,
     UNKNOWN
 };
 
