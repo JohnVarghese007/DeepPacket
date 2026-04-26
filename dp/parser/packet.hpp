@@ -154,7 +154,8 @@ enum class IpProto {
     UDP,
     ICMPv4,
     ICMPv6,
-    UNKNOWN
+    UNKNOWN,
+    NONE // Valid for IPv6 packets with no next header (i.e. no L4 payload)
 };
 
 } // namespace parser

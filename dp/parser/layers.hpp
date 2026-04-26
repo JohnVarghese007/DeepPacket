@@ -74,7 +74,7 @@ public:
     size_t header_size() const;
 
 private:
-    static void print_ipv6(uint8_t addr[16], std::ostream& os);
+    static void print_ipv6(const uint8_t addr[16], std::ostream& os);
 };
 
 

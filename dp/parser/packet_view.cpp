@@ -137,6 +137,14 @@ void PacketView::parse_layers() {
             payload = data + l4_offset + icmp_header_len;
             payload_len = length - (l4_offset + icmp_header_len);
         }
+        else if(next_header == 59) {  // No Next Header (RFC 8200)
+            ip_proto = IpProto::NONE;
+            has_tcp = has_udp = has_icmpv6 = false;
+
+            // No L4 header, no payload
+            payload = nullptr;
+            payload_len = 0;
+        }
         else {
             // Unsupported IP protocol
             ip_proto = IpProto::UNKNOWN;

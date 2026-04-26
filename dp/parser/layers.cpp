@@ -175,7 +175,7 @@ size_t IPv6Layer::header_size() const {
     return sizeof(IPv6Header);
 }
 
-void IPv6Layer::print_ipv6(uint8_t addr[16], std::ostream& os) {
+void IPv6Layer::print_ipv6(const uint8_t addr[16], std::ostream& os) {
     char buf[INET6_ADDRSTRLEN];
 
     if (inet_ntop(AF_INET6, addr, buf, sizeof(buf)) != nullptr) {

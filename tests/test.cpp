@@ -8,6 +8,49 @@
 
 
 
+
+// Sample IPv6 Packet (Ethernet + IPv6 + Payload)
+std::vector<uint8_t> ipv6_valid = {
+
+    // =======================
+    // ETHERNET HEADER (14 B)
+    // =======================
+    0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,   // Destination MAC
+    0x11,0x22,0x33,0x44,0x55,0x66,   // Source MAC
+    0x86,0xDD,                       // EtherType = IPv6 (0x86DD)
+
+    // =======================
+    // IPv6 HEADER (40 B)
+    // =======================
+    0x60,                            // Version=6, Traffic Class=0 (high nibble = 6)
+    0x00,                            // Traffic Class (low bits) + Flow Label (high bits)
+    0x00,0x00,                       // Flow Label (remaining bits)
+
+    0x00,0x04,                       // Payload Length = 4 bytes
+    0x3B,                            // Next Header = 59 (No Next Header)
+    0x40,                            // Hop Limit = 64
+
+    // Source IPv6 = 2001:db8::1
+    0x20,0x01,0x0D,0xB8,
+    0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x01,
+
+    // Destination IPv6 = 2001:db8::2
+    0x20,0x01,0x0D,0xB8,
+    0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x02,
+
+    // =======================
+    // PAYLOAD (4 B)
+    // =======================
+    0xDE,0xAD,0xBE,0xEF              // Arbitrary payload
+};
+
+
+
+
 // Sample TCP Packet (Ethernet + IPv4 + TCP Headers)
 std::vector<uint8_t> tcp_valid = {
 
@@ -123,8 +166,8 @@ std::vector<uint8_t> arp_valid = {
 
 
 
-// Sample ICMP Echo Request (Ethernet + IPv4 + ICMP)
-std::vector<uint8_t> icmp_valid = {
+// Sample ICMPv4 Echo Request (Ethernet + IPv4 + ICMP)
+std::vector<uint8_t> icmpv4_valid = {
 
     // =======================
     // ETHERNET HEADER (14 B)
@@ -156,6 +199,57 @@ std::vector<uint8_t> icmp_valid = {
     0x12,0x34,                       // Identifier
     0x00,0x01                        // Sequence Number
 };
+
+
+
+// Sample ICMPv6 Echo Request (Ethernet + IPv6 + ICMPv6)
+std::vector<uint8_t> icmpv6_valid = {
+
+    // =======================
+    // ETHERNET HEADER (14 B)
+    // =======================
+    0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,   // Destination MAC
+    0x11,0x22,0x33,0x44,0x55,0x66,   // Source MAC
+    0x86,0xDD,                       // EtherType = IPv6 (0x86DD)
+
+    // =======================
+    // IPv6 HEADER (40 B)
+    // =======================
+    0x60,                            // Version=6, Traffic Class=0
+    0x00,                            // Traffic Class / Flow Label
+    0x00,0x00,                       // Flow Label
+
+    0x00,0x0C,                       // Payload Length = 12 bytes (ICMPv6 header + payload)
+    0x3A,                            // Next Header = 58 (ICMPv6)
+    0x40,                            // Hop Limit = 64
+
+    // Source IPv6 = 2001:db8::1
+    0x20,0x01,0x0D,0xB8,
+    0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x01,
+
+    // Destination IPv6 = 2001:db8::2
+    0x20,0x01,0x0D,0xB8,
+    0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x02,
+
+    // =======================
+    // ICMPv6 HEADER (8 B)
+    // =======================
+    0x80,                            // Type = 128 (Echo Request)
+    0x00,                            // Code = 0
+    0x00,0x00,                       // Checksum (will be fixed below)
+    0x12,0x34,                       // Identifier
+    0x00,0x01,                       // Sequence Number
+
+    // =======================
+    // PAYLOAD (4 B)
+    // =======================
+    0xDE,0xAD,0xBE,0xEF              // Arbitrary payload
+};
+
 
 
 
@@ -437,6 +531,24 @@ void run_ipv4_tests() {
     invalid_checksum[20] ^= 0xFF; // corrupt source IP
     tests.push_back({invalid_checksum, dp::validation::ValidationError::IPV4_INVALID_CHECKSUM});
 
+    // ipv4 options truncated
+    std::vector<uint8_t> options_truncated = valid_packet;
+    options_truncated[14] = (4 << 4) | 6; // IHL = 6 + header = 24 bytes
+    options_truncated.resize(14 + 20);   // only 20 bytes available
+    tests.push_back({options_truncated, dp::validation::ValidationError::IPV4_OPTIONS_TRUNCATED});
+
+    // ipv4 fragment offset invalid
+    std::vector<uint8_t> fragment = valid_packet;
+    fragment[20] = 0x00; // flags = 0
+    fragment[21] = 0x05; // offset not a multiple of 8
+    tests.push_back({fragment, dp::validation::ValidationError::IPV4_FRAGMENT_OFFSET_INVALID});
+
+    // ipv4 more fragments invalid
+    std::vector<uint8_t> fragment_more = valid_packet;
+    fragment_more[20] = 0x00; // flags = 0 
+    fragment_more[21] = 0x08; // flag = 0 and offset = 8 is invalid (more fragments should be set if offset > 0)
+    tests.push_back({fragment_more, dp::validation::ValidationError::IPV4_MORE_FRAGMENTS_INVALID});
+
 
     oss << "\n==== IPV4 TESTS ====\n" << std::endl;
 
@@ -453,6 +565,109 @@ void run_ipv4_tests() {
     std::cout << oss.str();
 }
 
+
+
+void run_ipv6_tests() {
+    std::vector<std::pair<std::vector<uint8_t>, dp::validation::ValidationError>> tests;
+    std::ostringstream oss;
+
+    // Build a valid IPv6 packet
+    uint8_t src_mac[6] = {0x11,0x22,0x33,0x44,0x55,0x66};
+    uint8_t dst_mac[6] = {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF};
+
+    uint8_t src_ip6[16] = {
+        0x20,0x01,0x0D,0xB8, 0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x01
+    };
+
+    uint8_t dst_ip6[16] = {
+        0x20,0x01,0x0D,0xB8, 0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x02
+    };
+
+    std::vector<uint8_t> payload = {0xDE,0xAD,0xBE,0xEF};
+
+    std::vector<uint8_t> valid_packet =
+        PacketBuilder::build_ipv6_packet(
+            src_mac,
+            dst_mac,
+            src_ip6,
+            dst_ip6,
+            59,     // No next header
+            64,     // Hop Limit
+            payload
+        );
+
+    tests.push_back({valid_packet, dp::validation::ValidationError::NONE});
+
+    
+    // missing ipv6 header
+    std::vector<uint8_t> missing_header = valid_packet;
+    missing_header.resize(14); // Only Ethernet header
+    tests.push_back({missing_header, dp::validation::ValidationError::MISSING_IPV6_HEADER});
+    
+    // too small for ipv6
+    std::vector<uint8_t> too_small = valid_packet;
+    too_small.resize(14 + 20); // Less than 40 bytes
+    tests.push_back({too_small, dp::validation::ValidationError::TOO_SMALL_FOR_IPV6});
+    
+    // invalid ipv6 version
+    std::vector<uint8_t> invalid_version = valid_packet;
+    invalid_version[14] = 0x40; // put 4 intead of 6
+    tests.push_back({invalid_version, dp::validation::ValidationError::INVALID_IPV6_VERSION});
+    
+    // invalid ipv6 payload length
+    std::vector<uint8_t> invalid_payload_length = valid_packet;
+    invalid_payload_length[18] = 0x00; // high byte
+    invalid_payload_length[19] = 0x01; // low byte (1 byte)
+    tests.push_back({invalid_payload_length, dp::validation::ValidationError::INVALID_IPV6_PAYLOAD_LENGTH});
+
+    // ipv6 payload length exceeds packet size
+    std::vector<uint8_t> payload_exceeds = valid_packet;
+    payload_exceeds[18] = 0xFF;
+    payload_exceeds[19] = 0xFF; // very large payload length
+    tests.push_back({payload_exceeds, dp::validation::ValidationError::IPV6_PAYLOAD_EXCEEDS_PACKET});
+    
+    // unsupported next header/protocol
+    std::vector<uint8_t> unsupported_header = valid_packet;
+    unsupported_header[20] = 255; // unsupported next header
+    tests.push_back({unsupported_header, dp::validation::ValidationError::IPV6_UNSUPPORTED_NEXT_HEADER});
+    
+    // ipv6 hop limit set to zero
+    std::vector<uint8_t> hop_limit_zero = valid_packet;
+    hop_limit_zero[21] = 0; // hop limit =0
+    tests.push_back({hop_limit_zero, dp::validation::ValidationError::IPV6_HOP_LIMIT_ZERO});
+
+    // ipv6 extension header present
+    std::vector<uint8_t> extension_present = valid_packet;
+    extension_present[20] = 0x00; // Next Header = Hop-by-Hop Options
+    tests.push_back({extension_present, dp::validation::ValidationError::IPV6_EXTENSION_HEADER_PRESENT});
+
+    // ipv6 extension header unsupported
+    std::vector<uint8_t> ext_unsupported = valid_packet;
+    ext_unsupported[20] = 0x3C; // Routing Header (example unsupported)
+    tests.push_back({ext_unsupported, dp::validation::ValidationError::IPV6_EXTENSION_HEADER_UNSUPPORTED});
+
+    // ipv6 extension header truncated
+    std::vector<uint8_t> ext_truncated = valid_packet;
+    ext_truncated[20] = 0x00; // Hop-by-Hop Options
+    ext_truncated.resize(14 + 40 + 1); // truncate so extension header incomplete
+    tests.push_back({ext_truncated, dp::validation::ValidationError::IPV6_EXTENSION_HEADER_TRUNCATED});
+
+
+    oss << "\n==== IPV6 TESTS ====\n" << std::endl;
+
+    // table header
+    oss << std::left << std::setw(8)  << "Test#"  << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result\n";
+    oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
+
+    for (size_t i = 0; i < tests.size(); i++) {
+        run_single_test(oss, static_cast<int>(i + 1), tests[i].first, tests[i].second);
+    }
+
+    oss << "\n=======================\n" << std::endl;
+    std::cout << oss.str();
+}
 
 
 
@@ -613,7 +828,7 @@ void run_udp_tests() {
 
 
 
-void run_icmp_tests() {
+void run_icmpv4_tests() {
     std::vector<std::pair<std::vector<uint8_t>, dp::validation::ValidationError>> tests;
     std::ostringstream oss;
 
@@ -627,7 +842,7 @@ void run_icmp_tests() {
     std::vector<uint8_t> payload = {0xDE,0xAD,0xBE,0xEF};
 
     std::vector<uint8_t> valid_packet =
-        PacketBuilder::build_icmp_packet(
+        PacketBuilder::build_icmpv4_packet(
             src_mac,
             dst_mac,
             src_ip,
@@ -654,35 +869,35 @@ void run_icmp_tests() {
     missing_header.resize(icmp_offset);
     fix_ipv4_total_length(missing_header);
     fix_ipv4_checksum(missing_header);
-    tests.push_back({missing_header, dp::validation::ValidationError::MISSING_ICMP_HEADER});
+    tests.push_back({missing_header, dp::validation::ValidationError::MISSING_ICMPV4_HEADER});
 
     // too small for icmp
     std::vector<uint8_t> too_small = valid_packet;
     too_small.resize(icmp_offset + 4); // ICMP header size is 8 bytes
     fix_ipv4_total_length(too_small);
     fix_ipv4_checksum(too_small);
-    tests.push_back({too_small, dp::validation::ValidationError::TOO_SMALL_FOR_ICMP});
+    tests.push_back({too_small, dp::validation::ValidationError::TOO_SMALL_FOR_ICMPV4});
 
     // invalid type
     std::vector<uint8_t> invalid_type = valid_packet;
     invalid_type[icmp_offset] = 99; 
     fix_ipv4_total_length(invalid_type);
     fix_ipv4_checksum(invalid_type);
-    tests.push_back({invalid_type, dp::validation::ValidationError::ICMP_INVALID_TYPE});
+    tests.push_back({invalid_type, dp::validation::ValidationError::ICMPV4_INVALID_TYPE});
 
     // invalid code
     std::vector<uint8_t> invalid_code = valid_packet;
     invalid_code[icmp_offset + 1] = 5; // invalid for echo
     fix_ipv4_total_length(invalid_code);
     fix_ipv4_checksum(invalid_code);
-    tests.push_back({invalid_code, dp::validation::ValidationError::ICMP_INVALID_CODE});
+    tests.push_back({invalid_code, dp::validation::ValidationError::ICMPV4_INVALID_CODE});
 
     // invalid checksum
     std::vector<uint8_t> invalid_checksum = valid_packet;
     invalid_checksum[icmp_offset + 2] ^= 0xFF; // corrupt checksum high byte
     fix_ipv4_total_length(invalid_checksum);
     fix_ipv4_checksum(invalid_checksum);
-    tests.push_back({invalid_checksum, dp::validation::ValidationError::ICMP_INVALID_CHECKSUM});
+    tests.push_back({invalid_checksum, dp::validation::ValidationError::ICMPV4_INVALID_CHECKSUM});
 
     // truncated payload
     std::vector<uint8_t> truncated_payload = valid_packet;
@@ -690,7 +905,7 @@ void run_icmp_tests() {
     truncated_payload.resize(icmp_offset + 12); // less than 28 bytes
     fix_ipv4_total_length(truncated_payload);
     fix_ipv4_checksum(truncated_payload);
-    tests.push_back({truncated_payload, dp::validation::ValidationError::ICMP_TRUNCATED_PAYLOAD});
+    tests.push_back({truncated_payload, dp::validation::ValidationError::ICMPV4_TRUNCATED_PAYLOAD});
 
     // embedded ipv4 invalid
     std::vector<uint8_t> invalid_embed = valid_packet;
@@ -699,10 +914,10 @@ void run_icmp_tests() {
     invalid_embed[icmp_offset + icmp_header_len] = 0x60; 
     fix_ipv4_total_length(invalid_embed);
     fix_ipv4_checksum(invalid_embed);
-    tests.push_back({invalid_embed, dp::validation::ValidationError::ICMP_EMBEDDED_IPV4_INVALID});
+    tests.push_back({invalid_embed, dp::validation::ValidationError::ICMPV4_EMBEDDED_IPV4_INVALID});
 
     
-    oss << "\n==== ICMP TESTS ====\n" << std::endl;
+    oss << "\n==== ICMPV4 TESTS ====\n" << std::endl;
     // table header
     oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result" << "\n";
     oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
@@ -710,6 +925,147 @@ void run_icmp_tests() {
     for (size_t i = 0; i < tests.size(); i++) {
         run_single_test(oss, static_cast<int>(i + 1), tests[i].first, tests[i].second);
     }
+    oss << "\n=======================\n" << std::endl;
+    std::cout << oss.str();
+}
+
+
+
+void run_icmpv6_tests() {
+    std::vector<std::pair<std::vector<uint8_t>, dp::validation::ValidationError>> tests;
+    std::ostringstream oss;
+
+    // Build valid ICMPv6 Echo Request using PacketBuilder
+    uint8_t src_mac[6] = {0x11,0x22,0x33,0x44,0x55,0x66};
+    uint8_t dst_mac[6] = {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF};
+
+    uint8_t src_ip6[16] = {
+        0x20,0x01,0x0D,0xB8,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01
+    };
+
+    uint8_t dst_ip6[16] = {
+        0x20,0x01,0x0D,0xB8,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x02
+    };
+
+    std::vector<uint8_t> payload = {0xDE,0xAD,0xBE,0xEF};
+
+    std::vector<uint8_t> valid_packet =
+        PacketBuilder::build_icmpv6_packet(
+            src_mac,
+            dst_mac,
+            src_ip6,
+            dst_ip6,
+            128,    // Echo Request
+            0,      // Code
+            0x1234, // Identifier
+            0x0001, // Sequence
+            payload
+        );
+
+    tests.push_back({valid_packet, dp::validation::ValidationError::NONE});
+
+    // Compute offsets
+    size_t ethernet_header_len = 14;
+    size_t ipv6_header_len = 40;
+    size_t icmp_offset = ethernet_header_len + ipv6_header_len;
+    size_t icmp_header_len = 8;
+
+    // missing icmpv6 header
+    std::vector<uint8_t> missing_header = valid_packet;
+    missing_header.resize(icmp_offset);
+    tests.push_back({missing_header, dp::validation::ValidationError::ICMPV6_MISSING_HEADER});
+    
+    // too small for icmpv6
+    std::vector<uint8_t> too_small = valid_packet;
+    too_small.resize(icmp_offset + 4); // < 8 bytes
+    tests.push_back({too_small, dp::validation::ValidationError::ICMPV6_TOO_SMALL});
+    
+    // invalid type
+    std::vector<uint8_t> invalid_type = valid_packet;
+    invalid_type[icmp_offset] = 255; // invalid type
+    tests.push_back({invalid_type, dp::validation::ValidationError::ICMPV6_INVALID_TYPE});
+
+    // invalid code
+    std::vector<uint8_t> invalid_code = valid_packet;
+    invalid_code[icmp_offset + 1] = 7; // invalid for echo
+    tests.push_back({invalid_code, dp::validation::ValidationError::ICMPV6_INVALID_CODE});
+
+    // invalid checksum
+    std::vector<uint8_t> invalid_checksum = valid_packet;
+    invalid_checksum[icmp_offset + 2] ^= 0xFF; // corrupt checksum 
+    tests.push_back({invalid_checksum, dp::validation::ValidationError::ICMPV6_INVALID_CHECKSUM});
+
+    // truncated payload (error messages require >= 128 bits embedded IPv6)
+    std::vector<uint8_t> truncated_payload = valid_packet;
+    truncated_payload[icmp_offset] = 1; // dest unreachable
+    truncated_payload.resize(icmp_offset + 12); // too small for embedded IPv6
+    tests.push_back({truncated_payload, dp::validation::ValidationError::ICMPV6_TRUNCATED_PAYLOAD});
+
+    // embedded ipv6 invalid
+    std::vector<uint8_t> embedded_invalid = valid_packet;
+    embedded_invalid[icmp_offset] = 1; // Destination Unreachable
+    embedded_invalid.resize(icmp_offset + icmp_header_len + 40); // enough space
+    embedded_invalid[icmp_offset + icmp_header_len] = 0x40; // invalid IPv6 version (should be 0x60)
+    tests.push_back({embedded_invalid, dp::validation::ValidationError::ICMPV6_EMBEDDED_IPV6_INVALID});
+
+    // error message invalid (type must be 1 - 4)
+    std::vector<uint8_t> invalid_error_message = valid_packet;
+    invalid_error_message[icmp_offset] = 100;
+    tests.push_back({invalid_error_message, dp::validation::ValidationError::ICMPV6_ERROR_MESSAGE_INVALID});
+
+
+    oss << "\n==== ICMPV6 TESTS ====\n" << std::endl;
+
+    // table header
+    oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result\n";
+    oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
+
+    for (size_t i = 0; i < tests.size(); i++) {
+        run_single_test(oss, static_cast<int>(i + 1), tests[i].first, tests[i].second);
+    }
+
+    oss << "\n=======================\n" << std::endl;
+    std::cout << oss.str();
+}
+
+
+
+void run_misc_tests() {
+    std::vector<std::pair<std::vector<uint8_t>, dp::validation::ValidationError>> tests;
+    std::ostringstream oss;
+
+    // Build a valid IPv4 TCP packet
+    uint8_t src_mac[6] = {0x11,0x22,0x33,0x44,0x55,0x66};
+    uint8_t dst_mac[6] = {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF};
+    uint8_t src_ip[4] = {192,168,0,1};
+    uint8_t dst_ip[4] = {192,168,0,2};
+
+    std::vector<uint8_t> pkt =
+        PacketBuilder::build_tcp_packet(
+            src_mac,
+            dst_mac,
+            src_ip,
+            dst_ip,
+            80,
+            443,
+            {0x01,0x02,0x03,0x04}
+        );
+
+    // change to unsupported ethertype
+    pkt[23] = 0xFF; // IPv4 protocol field
+
+    tests.push_back({pkt, dp::validation::ValidationError::UNSUPPORTED_IP_PROTOCOL});
+
+    oss << "\n==== MISC TESTS ====\n" << std::endl;
+
+    // table header
+    oss << std::left << std::setw(8)  << "Test#" << std::setw(40) << "Expected" << std::setw(40) << "Received" << "Result\n";
+    oss << std::string(8 + 40 + 40 + 6, '-') << "\n";
+
+    run_single_test(oss, 1, tests[0].first, tests[0].second);
+
     oss << "\n=======================\n" << std::endl;
     std::cout << oss.str();
 }
@@ -752,14 +1108,18 @@ int run_capture_test() {
 
 
 
+
 int main() {
 
     run_ethernet_tests();
     run_arp_tests();
+    run_ipv6_tests();
     run_ipv4_tests();
     run_tcp_tests();
     run_udp_tests();
-    run_icmp_tests();
+    run_icmpv4_tests();
+    run_icmpv6_tests();
+    run_misc_tests();
 
     //int res = run_capture_test();
     //if(res!=0) {

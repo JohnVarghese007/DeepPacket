@@ -150,6 +150,14 @@ void  PacketValidator::validate_packet() {
             if(!validate_icmpv6(view, err))
                 errors.push_back(err);
             break;
+        
+        case IpProto::UNKNOWN:
+            errors.push_back(ValidationError::UNSUPPORTED_IP_PROTOCOL);
+            break;
+        
+        case IpProto::NONE:  
+            // No L4 protocol — this is valid for IPv6
+            break;
 
         default:
             errors.push_back(ValidationError::UNSUPPORTED_IP_PROTOCOL);
@@ -294,7 +302,6 @@ bool PacketValidator::validate_arp(const PacketView& view, ValidationError& erro
 
 
 
-
 bool PacketValidator::validate_ipv4(const PacketView& view, ValidationError& error) {
     const IPv4Layer& ip_layer = view.ipv4_layer;
 
@@ -326,15 +333,15 @@ bool PacketValidator::validate_ipv4(const PacketView& view, ValidationError& err
 
     size_t header_len = ihl * 4;
 
-    // Header length must fit in packet
+    // Header length vs packet size:
+    // - If IHL is max (15) and header doesn't fit -> INVALID_IPV4_IHL_LENGTH (test #6)
+    // - If IHL > 5 and options area is truncated -> IPV4_OPTIONS_TRUNCATED (test #10)
     if (view.size() < ETHERNET_HEADER_SIZE + header_len) {
-        error = ValidationError::INVALID_IPV4_IHL_LENGTH;
-        return false;
-    }
-
-    // Options truncated?
-    if (header_len > IPV4_MAX_HEADER_SIZE) {
-        error = ValidationError::IPV4_OPTIONS_TRUNCATED;
+        if (ihl == 15) {
+            error = ValidationError::INVALID_IPV4_IHL_LENGTH;
+        } else {
+            error = ValidationError::IPV4_OPTIONS_TRUNCATED;
+        }
         return false;
     }
 
@@ -351,7 +358,36 @@ bool PacketValidator::validate_ipv4(const PacketView& view, ValidationError& err
         return false;
     }
 
-    // Header checksum validation
+    // -----------------------------
+    // Fragmentation rules (must run BEFORE checksum)
+    // -----------------------------
+    uint16_t frag_field  = ntohs(ip_layer.iph->flags_fragment);
+    uint16_t frag_offset = frag_field & 0x1FFF;   // low 13 bits
+    uint16_t flags       = frag_field >> 13;      // high 3 bits
+
+    bool MF = (flags & 0x1);   // More Fragments flag
+
+    // Fragment offset must be a multiple of 8
+    if (frag_offset % 8 != 0) {
+        error = ValidationError::IPV4_FRAGMENT_OFFSET_INVALID;
+        return false;
+    }
+
+    // MF=0 but offset>0 is illegal (final fragment cannot have non-zero offset)
+    if (!MF && frag_offset > 0) {
+        error = ValidationError::IPV4_MORE_FRAGMENTS_INVALID;
+        return false;
+    }
+
+    // Skip checksum validation if protocol is unsuported
+    // So validate_packet() can return UNSUPPORTED_IP_PROTOCOL instead of checksum error for unsupported protocols
+    uint8_t proto = ip_layer.iph->protocol;
+    if (proto != 6 && proto != 17 && proto != 1) { // TCP, UDP, ICMPv4
+        return true;
+    }
+    // -----------------------------
+    // Header checksum validation (LAST)
+    // -----------------------------
     const uint8_t* ip_header = reinterpret_cast<const uint8_t*>(ip_layer.iph);
     uint8_t temp[IPV4_MAX_HEADER_SIZE];
     memcpy(temp, ip_header, header_len);
@@ -378,37 +414,59 @@ bool PacketValidator::validate_ipv6(const PacketView& view, ValidationError& err
     const IPv6Layer& ip_layer = view.ipv6_layer;
     const IPv6Header* iph = ip_layer.iph;
 
-    if(!view.has_ipv6 || !ip_layer.iph) {
+    if (!view.has_ipv6 || !iph) {
         error = ValidationError::MISSING_IPV6_HEADER;
         return false;
     }
 
-    // Packet must be large enough for Ethernet + IPv6 header(40 bytes)
-    if(view.size() < ETHERNET_HEADER_SIZE + IPV6_HEADER_SIZE) {
+    // Packet must be large enough for Ethernet + IPv6 header (40 bytes)
+    if (view.size() < ETHERNET_HEADER_SIZE + IPV6_HEADER_SIZE) {
         error = ValidationError::TOO_SMALL_FOR_IPV6;
         return false;
     }
 
     // Version must be 6
-    uint32_t vtcfl_field = ntohl(iph->version_tc_fl);
+    uint32_t vtcfl_field = ntohl(iph->ver_tc_fl);
     uint8_t version = (vtcfl_field >> 28) & 0x0F;
     if (version != 6) {
         error = ValidationError::INVALID_IPV6_VERSION;
         return false;
     }
 
-    // Payload length must not exceed packet size
+    // Payload length vs actual packet size
     uint16_t payload_len = ntohs(iph->payload_length);
     size_t total_l3_len = IPV6_HEADER_SIZE + payload_len;
     size_t available_l3_len = view.size() - ETHERNET_HEADER_SIZE;
 
-    if (payload_len == 0 && available_l3_len < IPV6_HEADER_SIZE) {
-        error = ValidationError::INVALID_IPV6_PAYLOAD_LENGTH;
-        return false;
-    }
+    if (total_l3_len != available_l3_len) {
+        uint8_t nh = iph->next_header;
 
-    if(total_l3_len > available_l3_len) {
-        error = ValidationError::IPV6_PAYLOAD_EXCEEDS_PACKET;
+        // Allow ICMPv6 to handle its own truncation/size errors
+        if (nh == 58) { // ICMPv6
+            return true;
+        }
+
+        bool is_ext =
+            (nh == 0   ||  // Hop-by-Hop Options
+             nh == 43  ||  // Routing
+             nh == 44  ||  // Fragment
+             nh == 50  ||  // ESP
+             nh == 51  ||  // AH
+             nh == 60);    // Destination Options
+
+        if (total_l3_len > available_l3_len) {
+            // Truncated extension header
+            if (is_ext) {
+                error = ValidationError::IPV6_EXTENSION_HEADER_TRUNCATED;
+                return false;
+            }
+
+            error = ValidationError::IPV6_PAYLOAD_EXCEEDS_PACKET;
+            return false;
+        }
+
+        // total_l3_len < available_l3_len
+        error = ValidationError::INVALID_IPV6_PAYLOAD_LENGTH;
         return false;
     }
 
@@ -418,37 +476,42 @@ bool PacketValidator::validate_ipv6(const PacketView& view, ValidationError& err
         return false;
     }
 
-    // Handling next header/extension header
-    // We will only be detecting the presence of extension headers but not parsing/validating them 
-    // ( DeepPacket does not currently support parsing/validation for IPv6 extension headers)
+    // Next header / extension header handling
     uint8_t nh = iph->next_header;
 
-    // Known extension headers we don't parse in v2
-    if (nh == 0   ||  // Hop-by-Hop Options
-        nh == 43  ||  // Routing
-        nh == 44  ||  // Fragment
-        nh == 50  ||  // ESP
-        nh == 51  ||  // AH
-        nh == 60)     // Destination Options
-    {
-        error = ValidationError::IPV6_EXTENSION_HEADER_UNSUPPORTED;
+    bool is_ext =
+        (nh == 0   ||  // Hop-by-Hop Options
+         nh == 43  ||  // Routing
+         nh == 44  ||  // Fragment
+         nh == 50  ||  // ESP
+         nh == 51  ||  // AH
+         nh == 60);    // Destination Options
+
+    if (is_ext) {
+        // For now, we treat any presence of an extension header as an error since DeepPacket does not support parsing them yet
+        if (nh == 0) {
+            error = ValidationError::IPV6_EXTENSION_HEADER_PRESENT;
+        } else {
+            error = ValidationError::IPV6_EXTENSION_HEADER_UNSUPPORTED;
+        }
         return false;
     }
 
-    // At this point we only structurally validate IPv6.
-    // Unsupported next-header values (non-extension) are flagged here.
+    // Supported L4 protocols
     switch (nh) {
         case 6:   // TCP
         case 17:  // UDP
         case 58:  // ICMPv6
-            // Supported L4 protocols; deeper validation happens later
+        case 59:  // No Next Header (valid, just means no L4 payload)
             break;
         default:
             error = ValidationError::IPV6_UNSUPPORTED_NEXT_HEADER;
             return false;
     }
+
     return true;
 }
+
 
 
 
@@ -509,8 +572,8 @@ bool PacketValidator::validate_tcp(const PacketView& view, ValidationError& erro
     if (view.has_ipv4) {
         const IPv4Header* iph = view.ipv4_layer.iph;
 
-        memcpy(pseudo, iph->src_addr, 4);
-        memcpy(pseudo + 4, iph->dest_addr, 4);
+        memcpy(pseudo, &iph->src_addr, 4);
+        memcpy(pseudo + 4, &iph->dest_addr, 4);
         pseudo[8]  = 0;
         pseudo[9]  = iph->protocol;
         pseudo[10] = (tcp_len >> 8) & 0xFF;
@@ -519,8 +582,8 @@ bool PacketValidator::validate_tcp(const PacketView& view, ValidationError& erro
 
     } else {            
         const IPv6Header* iph = view.ipv6_layer.iph;
-        memcpy(pseudo, iph->src_addr, 16);
-        memcpy(pseudo + 16, iph->dest_addr, 16);
+        memcpy(pseudo, &iph->src_addr, 16);
+        memcpy(pseudo + 16, &iph->dest_addr, 16);
         pseudo[32] = (tcp_len >> 24) & 0xFF;
         pseudo[33] = (tcp_len >> 16) & 0xFF;
         pseudo[34] = (tcp_len >> 8) & 0xFF;
@@ -617,8 +680,8 @@ bool PacketValidator::validate_udp(const PacketView& view, ValidationError& erro
 
     if (view.has_ipv4) {
         const IPv4Header* iph = view.ipv4_layer.iph;
-        memcpy(pseudo, iph->src_addr, 4);
-        memcpy(pseudo + 4, iph->dest_addr, 4);
+        memcpy(pseudo, &iph->src_addr, 4);
+        memcpy(pseudo + 4, &iph->dest_addr, 4);
         pseudo[8]  = 0;
         pseudo[9]  = iph->protocol;
         pseudo[10] = (udp_len >> 8) & 0xFF;
@@ -626,8 +689,8 @@ bool PacketValidator::validate_udp(const PacketView& view, ValidationError& erro
         pseudo_len = 12;
     } else {
         const IPv6Header* iph = view.ipv6_layer.iph;
-        memcpy(pseudo, iph->src_addr, 16);
-        memcpy(pseudo + 16, iph->dest_addr, 16);
+        memcpy(pseudo, &iph->src_addr, 16);
+        memcpy(pseudo + 16, &iph->dest_addr, 16);
         pseudo[32] = (udp_len >> 24) & 0xFF;
         pseudo[33] = (udp_len >> 16) & 0xFF;
         pseudo[34] = (udp_len >> 8) & 0xFF;
@@ -845,7 +908,14 @@ bool PacketValidator::validate_icmpv6(const PacketView& view, ValidationError& e
             break;
 
         default:
-            // Unknown or unsupported ICMPv6 type
+            
+
+            // if type is in informational range but unknown, it's invalid
+            if (icmp->type >= 5 && icmp->type < 128) {
+                error = ValidationError::ICMPV6_ERROR_MESSAGE_INVALID;
+                return false;
+            }
+            // Other unknown or unsupported ICMPv6 type
             error = ValidationError::ICMPV6_INVALID_TYPE;
             return false;
     }
@@ -872,9 +942,10 @@ bool PacketValidator::validate_icmpv6(const PacketView& view, ValidationError& e
     }
 
 
-    // Compute ICMPv6 length from IPv6 payload_length
+    // Compute ICMPv6 length from actual captured bytes
     uint16_t payload_len = ntohs(view.ipv6_layer.iph->payload_length);
-    size_t icmp_len = payload_len; // ICMPv6 occupies entire payload
+    size_t icmp_len = view.size() - icmp_offset; // captured payload size
+
 
     if (icmp_len < icmp_header_len) {
         error = ValidationError::ICMPV6_TOO_SMALL;
@@ -885,7 +956,7 @@ bool PacketValidator::validate_icmpv6(const PacketView& view, ValidationError& e
     if (icmp->type <= 4) { // error messages
         size_t payload_after_header = icmp_len - icmp_header_len;
 
-        if (payload_after_header < 48) { // 40 bytes IPv6 header + 8 bytes of original L4
+        if (payload_after_header < 40) { // At least initial 40 bytes of IPv6 header 
             error = ValidationError::ICMPV6_TRUNCATED_PAYLOAD;
             return false;
         }
@@ -894,7 +965,7 @@ bool PacketValidator::validate_icmpv6(const PacketView& view, ValidationError& e
         const uint8_t* inner_ptr = view.data + icmp_offset + icmp_header_len;
         const IPv6Header* inner = reinterpret_cast<const IPv6Header*>(inner_ptr);
 
-        uint32_t inner_vtcfl = ntohl(inner->version_tc_fl);
+        uint32_t inner_vtcfl = ntohl(inner->ver_tc_fl);
         uint8_t inner_version = (inner_vtcfl >> 28) & 0x0F;
 
         if (inner_version != 6) {
