@@ -1,1 +1,17 @@
 * text=auto eol=lf
+
+# ---------------------------------------------------------
+# Source code languages — ensure GitHub Linguist detects them
+# ---------------------------------------------------------
+*.cpp linguist-detectable=true
+*.hpp linguist-detectable=true
+*.h   linguist-detectable=true
+*.c   linguist-detectable=true
+*.sh  linguist-detectable=true
+*.bash linguist-detectable=true
+CMakeLists.txt linguist-detectable=true
+*.cmake linguist-detectable=true
+*.py linguist-detectable=true
+
+third_party/** linguist-vendored=true
+build/**        linguist-generated=true
