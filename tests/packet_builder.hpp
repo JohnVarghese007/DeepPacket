@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 
+
 // --- Validator-matching checksum ---
 inline uint16_t compute_checksum(const uint8_t* buffer, size_t len) {
     uint32_t sum = 0;
@@ -65,6 +66,60 @@ inline uint16_t transport_checksum_validator_style(
 class PacketBuilder {
 public:
 
+    static std::vector<uint8_t> build_ipv6_packet(
+        const uint8_t src_mac[6],
+        const uint8_t dst_mac[6],
+        const uint8_t src_ip[16],
+        const uint8_t dst_ip[16],
+        uint8_t next_header,
+        uint8_t hop_limit,
+        const std::vector<uint8_t>& payload
+    ) {
+        std::vector<uint8_t> pkt;
+
+        // -------------------------
+        // Ethernet Header (14 bytes)
+        // -------------------------
+        pkt.insert(pkt.end(), dst_mac, dst_mac + 6);
+        pkt.insert(pkt.end(), src_mac, src_mac + 6);
+        pkt.push_back(0x86); // EtherType = IPv6 (0x86DD)
+        pkt.push_back(0xDD);
+
+        // -------------------------
+        // IPv6 Header (40 bytes)
+        // -------------------------
+
+        // Version=6, Traffic Class=0, Flow Label=0
+        pkt.push_back(0x60);
+        pkt.push_back(0x00);
+        pkt.push_back(0x00);
+        pkt.push_back(0x00);
+
+        // Payload length (16-bit)
+        uint16_t payload_len = payload.size();
+        pkt.push_back((payload_len >> 8) & 0xFF);
+        pkt.push_back(payload_len & 0xFF);
+
+        // Next Header (caller chooses)
+        pkt.push_back(next_header);
+
+        // Hop Limit
+        pkt.push_back(hop_limit);
+
+        // Source IPv6
+        pkt.insert(pkt.end(), src_ip, src_ip + 16);
+
+        // Destination IPv6
+        pkt.insert(pkt.end(), dst_ip, dst_ip + 16);
+
+        // -------------------------
+        // Payload
+        // -------------------------
+        pkt.insert(pkt.end(), payload.begin(), payload.end());
+
+        return pkt;
+    }
+
     static std::vector<uint8_t> build_tcp_packet(
         const uint8_t src_mac[6],
         const uint8_t dst_mac[6],
@@ -117,7 +172,7 @@ public:
 
         pkt.insert(pkt.end(), payload.begin(), payload.end());
 
-        // Compute TCP checksum (validator-style)
+        // Compute TCP checksum 
         uint16_t tcp_len = 20 + payload.size();
         uint16_t csum = transport_checksum_validator_style(
             src_ip, dst_ip, 6,
@@ -254,7 +309,7 @@ public:
     }
 
 
-    static std::vector<uint8_t> build_icmp_packet(
+    static std::vector<uint8_t> build_icmpv4_packet(
         const uint8_t src_mac[6],
         const uint8_t dst_mac[6],
         const uint8_t src_ip[4],
@@ -342,4 +397,120 @@ public:
 
         return pkt;
     }
+
+
+    static std::vector<uint8_t> build_icmpv6_packet(
+        const uint8_t src_mac[6],
+        const uint8_t dst_mac[6],
+        const uint8_t src_ip[16],
+        const uint8_t dst_ip[16],
+        uint8_t type,   //  128 = echo request, 129 = echo reply
+        uint8_t code,         
+        uint16_t identifier,
+        uint16_t sequence,
+        const std::vector<uint8_t>& payload
+    ) {
+        std::vector<uint8_t> pkt;
+
+        // -------------------------
+        // Ethernet Header (14 bytes)
+        // -------------------------
+        pkt.insert(pkt.end(), dst_mac, dst_mac + 6);
+        pkt.insert(pkt.end(), src_mac, src_mac + 6);
+        pkt.push_back(0x86); // EtherType = IPv6 (0x86DD)
+        pkt.push_back(0xDD);
+
+        // -------------------------
+        // IPv6 Header (40 bytes)
+        // -------------------------
+
+        // Version=6, Traffic Class=0, Flow Label=0
+        pkt.push_back(0x60);
+        pkt.push_back(0x00);
+        pkt.push_back(0x00);
+        pkt.push_back(0x00);
+
+        // Payload length = ICMPv6 header (8) + payload
+        uint16_t payload_len = 8 + payload.size();
+        pkt.push_back((payload_len >> 8) & 0xFF);
+        pkt.push_back(payload_len & 0xFF);
+
+        // Next Header = 58 (ICMPv6)
+        pkt.push_back(58);
+
+        // Hop Limit
+        pkt.push_back(64);
+
+        // Source IPv6
+        pkt.insert(pkt.end(), src_ip, src_ip + 16);
+
+        // Destination IPv6
+        pkt.insert(pkt.end(), dst_ip, dst_ip + 16);
+
+        // -------------------------
+        // ICMPv6 Header (8 bytes)
+        // -------------------------
+        size_t icmp_start = pkt.size();
+
+        pkt.push_back(type);
+        pkt.push_back(code);
+
+        // Checksum placeholder
+        pkt.push_back(0x00);
+        pkt.push_back(0x00);
+
+        // Identifier
+        pkt.push_back((identifier >> 8) & 0xFF);
+        pkt.push_back(identifier & 0xFF);
+
+        // Sequence
+        pkt.push_back((sequence >> 8) & 0xFF);
+        pkt.push_back(sequence & 0xFF);
+
+        // Payload
+        pkt.insert(pkt.end(), payload.begin(), payload.end());
+
+        // -------------------------
+        // Compute ICMPv6 checksum
+        // -------------------------
+
+        // Build pseudo-header
+        std::vector<uint8_t> pseudo;
+        pseudo.insert(pseudo.end(), src_ip, src_ip + 16);
+        pseudo.insert(pseudo.end(), dst_ip, dst_ip + 16);
+
+        uint32_t upper_len = payload_len;
+        pseudo.push_back((upper_len >> 24) & 0xFF);
+        pseudo.push_back((upper_len >> 16) & 0xFF);
+        pseudo.push_back((upper_len >> 8) & 0xFF);
+        pseudo.push_back(upper_len & 0xFF);
+
+        pseudo.push_back(0x00);
+        pseudo.push_back(0x00);
+        pseudo.push_back(0x00);
+        pseudo.push_back(58); // Next Header = ICMPv6
+
+        // Copy ICMPv6 segment
+        std::vector<uint8_t> icmp_segment(pkt.begin() + icmp_start, pkt.end());
+
+        // Zero checksum field
+        icmp_segment[2] = 0;
+        icmp_segment[3] = 0;
+
+        // Compute checksum
+        uint32_t sum = compute_checksum(pseudo.data(), pseudo.size());
+        sum += compute_checksum(icmp_segment.data(), icmp_segment.size());
+
+        while (sum >> 16)
+            sum = (sum & 0xFFFF) + (sum >> 16);
+
+        uint16_t checksum = ~sum & 0xFFFF;
+
+        // Write checksum back
+        pkt[icmp_start + 2] = (checksum >> 8) & 0xFF;
+        pkt[icmp_start + 3] = checksum & 0xFF;
+
+        return pkt;
+    }
+
 };

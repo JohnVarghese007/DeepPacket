@@ -6,6 +6,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <ostream>
 
 
 namespace dp {
@@ -57,11 +58,27 @@ public:
     size_t header_size() const;
 
 private:
-    static void print_ip(uint32_t ip, std::ostream& os);
+    static void print_ipv4(uint32_t ip, std::ostream& os);
 };
 
 
-// Layer 4 -> TCP Header
+// LAYER 3 -> IPv6 Layer
+class IPv6Layer {
+public:
+    const IPv6Header *iph;
+
+    IPv6Layer() : iph(nullptr) {}
+    IPv6Layer(const uint8_t *packet);
+
+    void print(std::ostream& os) const;
+    size_t header_size() const;
+
+private:
+    static void print_ipv6(const uint8_t addr[16], std::ostream& os);
+};
+
+
+// Layer 4 -> TCP Layer
 class TCPLayer {
 public:
     const TCPHeader *tcph;
@@ -77,7 +94,7 @@ private:
 };
 
 
-// LAYER 4 -> UDP Header
+// LAYER 4 -> UDP Layer
 class UDPLayer {
 public:
     const UDPHeader *udph;
@@ -91,21 +108,36 @@ public:
 };
 
 
-// LAYER 5 -> ICMP Header
-class ICMPLayer {
+// NETWORK CONTROL -> ICMPv4 Layer (carried inside IPv4)
+class ICMPv4Layer {
 public:
-    const ICMPFixedHeader *icmph;
-    const ICMPEcho *echo;
-    const ICMPDestUnreach *unreach;
-    const ICMPRedirect *redirect;
-    const ICMPParamProblem *param;
+    const ICMPv4Header *icmph;
+    const ICMPv4Echo *echo;
+    const ICMPv4DestUnreach *unreach;
+    const ICMPv4Redirect *redirect;
+    const ICMPv4ParamProblem *param;
 
-    ICMPLayer() : icmph(nullptr), echo(nullptr), unreach(nullptr), redirect(nullptr), param(nullptr) {}
-    ICMPLayer(const uint8_t *packet);
+    ICMPv4Layer() : icmph(nullptr), echo(nullptr), unreach(nullptr), redirect(nullptr), param(nullptr) {}
+    ICMPv4Layer(const uint8_t *packet);
     
     void print(std::ostream& os) const;
     size_t header_size() const;
 
+};
+
+
+// NETWORK CONTROL -> ICMPv6 Layer (carried inside IPv6)
+class ICMPv6Layer {
+public:
+    const ICMPv6Header *icmph;
+    const ICMPv6Echo *echo;
+    const ICMPv6Error *error;
+
+    ICMPv6Layer() : icmph(nullptr), echo(nullptr), error(nullptr) {}
+    ICMPv6Layer(const uint8_t *packet);
+
+     void print(std::ostream& os) const;
+    size_t header_size() const;
 };
 
 

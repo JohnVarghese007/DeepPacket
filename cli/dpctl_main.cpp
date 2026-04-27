@@ -51,7 +51,7 @@ static void print_info() {
 }
 
 int main() {
-    dp::engine::Engine DeepPacketEngine;
+    dp::DeepPacketEngine DeepPacketEngine;
 
     std::cout << "DeepPacket CLI (interactive mode)\n";
     std::cout << "Type 'help' for commands.\n";

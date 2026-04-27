@@ -12,14 +12,14 @@ namespace dp::core {
 
 namespace {
 
-// Map parser L4Type to GUI-facing TransportProtocol.
-// Adjust the L4Type names to match your actual enum in parser.hpp.
-TransportProtocol to_transport_protocol(dp::parser::L4Type l4)
+// Map parser IP protocol to GUI-facing TransportProtocol.
+TransportProtocol to_transport_protocol(dp::parser::IpProto proto)
 {
-    switch (l4) {
-        case dp::parser::L4Type::TCP:  return TransportProtocol::TCP;
-        case dp::parser::L4Type::UDP:  return TransportProtocol::UDP;
-        case dp::parser::L4Type::ICMP: return TransportProtocol::ICMP;
+    switch (proto) {
+        case dp::parser::IpProto::TCP:  return TransportProtocol::TCP;
+        case dp::parser::IpProto::UDP:  return TransportProtocol::UDP;
+        case dp::parser::IpProto::ICMPv4: return TransportProtocol::ICMPv4;
+        case dp::parser::IpProto::ICMPv6: return TransportProtocol::ICMPv6;
         default:           return TransportProtocol::UNKNOWN;
     }
 }
@@ -290,7 +290,7 @@ void CaptureController::process_packet(const uint8_t* data, size_t len)
     // Parse
     dp::parser::ParsedPacket pkt = dp::parser::parse_packet(std::span<const uint8_t>(data, len));
 
-    // Mark live-capture packets so validator can skip UDP checksum(to counter checksum offloading effects)
+    // Mark live-capture packets so validator can skip UDP/TCP checksum(to counter checksum offloading effects)
     if(mode_ == CaptureMode::LIVE) {
         pkt.view.is_live_capture = true;
     }
@@ -324,41 +324,75 @@ PacketSummary CaptureController::make_summary(const dp::parser::ParsedPacket& pk
     const dp::parser::PacketView& view = pkt.view;
 
     // IPv4 addresses (if present)
-    if (view.has_ip && view.ip_layer.iph) {
+    if(view.has_ipv4 && view.ipv4_layer.iph) {
         char src_buf[INET_ADDRSTRLEN] = {};
         char dst_buf[INET_ADDRSTRLEN] = {};
 
-        inet_ntop(AF_INET, &view.ip_layer.iph->src_addr, src_buf, sizeof(src_buf));
-        inet_ntop(AF_INET, &view.ip_layer.iph->dest_addr, dst_buf, sizeof(dst_buf));
+        inet_ntop(AF_INET, &view.ipv4_layer.iph->src_addr, src_buf, sizeof(src_buf));
+        inet_ntop(AF_INET, &view.ipv4_layer.iph->dest_addr, dst_buf, sizeof(dst_buf));
 
         s.src_ip = src_buf;
         s.dst_ip = dst_buf;
-    } else {
+        s.hop_limit_or_ttl = view.ipv4_layer.iph->ttl;
+    } 
+    else if(view.has_ipv6 && view.ipv6_layer.iph) {
+        char src_buf[INET6_ADDRSTRLEN] = {};
+        char dst_buf[INET6_ADDRSTRLEN] = {};
+
+        inet_ntop(AF_INET6, view.ipv6_layer.iph->src_addr, src_buf, sizeof(src_buf));
+        inet_ntop(AF_INET6, view.ipv6_layer.iph->dest_addr, dst_buf, sizeof(dst_buf));
+
+        s.src_ip = src_buf;
+        s.dst_ip = dst_buf;
+        s.hop_limit_or_ttl = view.ipv6_layer.iph->hop_limit;
+    }
+    else if(view.has_arp) {
+        s.src_ip = "ARP";
+        s.dst_ip = "ARP";
+        s.hop_limit_or_ttl = 0;
+    }
+    else {
         s.src_ip = "N/A";
         s.dst_ip = "N/A";
+        s.hop_limit_or_ttl = 0;
     }
 
-    // Ports (if TCP/UDP present). Adjust field names to your actual headers.
+    // Ports (if TCP/UDP present) + TCP flags (if TCP)
     s.src_port = 0;
     s.dst_port = 0;
+    s.tcp_flags = 0;
 
     if (view.has_tcp && view.tcp_layer.tcph) {
-        // Typical TCP header fields: src_port, dest_port, flags, etc.
         s.src_port = ntohs(view.tcp_layer.tcph->src_port);
         s.dst_port = ntohs(view.tcp_layer.tcph->dest_port);
-
-        // TCP flags (if you have a flags field).
-        s.tcp_flags = view.tcp_layer.tcph->flags; // adjust to your struct
-    } else if (view.has_udp && view.udp_layer.udph) {
+        s.tcp_flags = view.tcp_layer.tcph->flags; 
+    } 
+    else if (view.has_udp && view.udp_layer.udph) {
         s.src_port = ntohs(view.udp_layer.udph->src);
         s.dst_port = ntohs(view.udp_layer.udph->dest);
         s.tcp_flags = 0;
-    } else {
-        s.tcp_flags = 0;
+    } 
+
+    // ICMP type and code    
+    s.icmp_type = 0;
+    s.icmp_code = 0;
+
+    if (view.has_icmpv4 && view.icmpv4_layer.icmph) {
+        s.icmp_type = view.icmpv4_layer.icmph->type;
+        s.icmp_code = view.icmpv4_layer.icmph->code;
+    }
+    else if (view.has_icmpv6 && view.icmpv6_layer.icmph) {
+        s.icmp_type = view.icmpv6_layer.icmph->type;
+        s.icmp_code = view.icmpv6_layer.icmph->code;
     }
 
-    // Protocol classification
-    s.protocol = to_transport_protocol(view.l4_type);
+    // IP Protocol classification
+    if(view.has_arp) {
+        s.protocol = TransportProtocol::ARP; // Since ARP is detected at the ethernet layer
+    }
+    else {
+        s.protocol = to_transport_protocol(view.ip_proto);
+    }
 
     // Packet length
     s.length = static_cast<uint32_t>(view.size());

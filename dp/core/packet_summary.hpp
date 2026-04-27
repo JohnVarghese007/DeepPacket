@@ -12,7 +12,8 @@ enum class TransportProtocol {
     UNKNOWN = 0,
     TCP,
     UDP,
-    ICMP,
+    ICMPv4,
+    ICMPv6,
     ARP
 };
 
@@ -45,13 +46,20 @@ struct PacketSummary {
 
     // Optional: TCP flags (0 for non‑TCP)
     uint8_t tcp_flags = 0;
+
+    uint8_t hop_limit_or_ttl = 0;
+
+    // icmp type and code (0 for non‑ICMP)
+    uint8_t icmp_type = 0;
+    uint8_t icmp_code = 0;
 };
 
 inline const char* transport_proto_to_string(TransportProtocol proto) {
     switch (proto) {
         case TransportProtocol::TCP:   return "TCP";
         case TransportProtocol::UDP:   return "UDP";
-        case TransportProtocol::ICMP:  return "ICMP";
+        case TransportProtocol::ICMPv4:  return "ICMPv4";
+        case TransportProtocol::ICMPv6:  return "ICMPv6";
         case TransportProtocol::ARP:   return "ARP";
         default:                       return "UNKNOWN";
     }

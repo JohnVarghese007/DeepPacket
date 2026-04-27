@@ -19,13 +19,14 @@ namespace dp::parser::layers {
 
 /*
     Network Layers Implementation
-    - This file constains implementations of the following classes:
+    - This file contains implementations of the following classes:
         - EthernetLayer
         - ARPLayer
         - IPv4Layer
         - TCPLayer
         - UDPLayer
-        - ICMPLayer
+        - ICMPv4Layer
+        - ICMPv6Layer
 */
 
 
@@ -128,10 +129,10 @@ IPv4Layer::IPv4Layer(const uint8_t *packet) {
 void IPv4Layer::print(std::ostream& os) const {
     os << "=== IPv4 Layer ===" << std::endl;
     os << "Source IP: ";
-    print_ip(iph->src_addr, os);
+    print_ipv4(iph->src_addr, os);
     os << std::endl;
     os << "Destination IP: ";
-    print_ip(iph->dest_addr, os);
+    print_ipv4(iph->dest_addr, os);
     os << std::endl;
     os << "Protocol: " << (int) iph->protocol << std::endl;
     os << "==================" << std::endl;
@@ -142,12 +143,46 @@ size_t IPv4Layer::header_size() const {
     return (iph->version_ihl & 0x0F) * 4;
 }
 
-void IPv4Layer::print_ip(uint32_t ip, std::ostream& os){
+void IPv4Layer::print_ipv4(uint32_t ip, std::ostream& os){
     ip = ntohl(ip);
     os << ((ip >> 24) & 0xFF) << "."
         << ((ip >> 16) & 0xFF) << "."
         << ((ip >> 8) & 0xFF) << "."
         << (ip & 0xFF);
+}
+
+
+
+// LAYER 3 -> IPv6 Layer
+IPv6Layer::IPv6Layer(const uint8_t *packet) {
+    iph = reinterpret_cast<const IPv6Header*>(packet);
+}
+
+void IPv6Layer::print(std::ostream& os) const {
+    os << "=== IPv6 Layer ===" << std::endl;
+    os << "Source IP: ";
+    print_ipv6(iph->src_addr, os);
+    os << std::endl;
+    os << "Destination IP: ";
+    print_ipv6(iph->dest_addr, os);
+    os << std::endl;
+    os << "Next Header: " << (int) iph->next_header << std::endl;
+    os << "Hop Limit: " << (int) iph->hop_limit << std::endl;
+    os << "==================" << std::endl;
+}
+
+size_t IPv6Layer::header_size() const {
+    return sizeof(IPv6Header);
+}
+
+void IPv6Layer::print_ipv6(const uint8_t addr[16], std::ostream& os) {
+    char buf[INET6_ADDRSTRLEN];
+
+    if (inet_ntop(AF_INET6, addr, buf, sizeof(buf)) != nullptr) {
+        os << buf;
+    } else {
+        os << "<invalid IPv6>";
+    }
 }
 
 
@@ -225,58 +260,107 @@ size_t UDPLayer::header_size() const {
 
 
 
-// Layer 4 -> ICMP Layer
-ICMPLayer::ICMPLayer(const uint8_t *packet) { 
-    icmph = reinterpret_cast<const ICMPFixedHeader*>(packet);
+// NETWORK CONTROL (Layer 3) -> ICMPv4 Layer
+// ICMPv4 is a network-layer control protocol carried inside IPv4.
+ICMPv4Layer::ICMPv4Layer(const uint8_t *packet) { 
+    icmph = reinterpret_cast<const ICMPv4Header*>(packet);
     echo = nullptr;
     unreach = nullptr;
     redirect = nullptr;
     param = nullptr;
 
-    size_t fixed_offset = sizeof(ICMPFixedHeader);
+    size_t fixed_offset = sizeof(ICMPv4Header);
     switch(icmph ->type) {
 
         case 0: // reply
         case 8: // request
-            echo = reinterpret_cast<const ICMPEcho*>(packet + fixed_offset);
+            echo = reinterpret_cast<const ICMPv4Echo*>(packet + fixed_offset);
             break;
 
         case 3:
-            unreach = reinterpret_cast<const ICMPDestUnreach*>(packet + fixed_offset);
+            unreach = reinterpret_cast<const ICMPv4DestUnreach*>(packet + fixed_offset);
             break;
             
         case 5:
-            redirect = reinterpret_cast<const ICMPRedirect*>(packet + fixed_offset);
+            redirect = reinterpret_cast<const ICMPv4Redirect*>(packet + fixed_offset);
             break;
 
         case 12:
-            param = reinterpret_cast<const ICMPParamProblem*>(packet + fixed_offset);
+            param = reinterpret_cast<const ICMPv4ParamProblem*>(packet + fixed_offset);
             break;
 
         default:
             // unsupported type
             break;
 
-
     }
 }
 
-void ICMPLayer::print(std::ostream& os) const {
-    os << "=== ICMP Layer ===" << std::endl;
+void ICMPv4Layer::print(std::ostream& os) const {
+    os << "=== ICMPv4 Layer ===" << std::endl;
     os << "Type: " << icmph->type << std::endl;
     os << "Code: " << icmph->code << std::endl;
     os << "Checksum: " << ntohs(icmph->checksum) << std::endl;
     os << "=================" << std::endl;
 }
 
-size_t ICMPLayer::header_size() const {
-    size_t res = sizeof(ICMPFixedHeader);
+size_t ICMPv4Layer::header_size() const {
+    size_t res = sizeof(ICMPv4Header);
 
-    if(echo) res += sizeof(ICMPEcho);
-    if(unreach) res += sizeof(ICMPDestUnreach);
-    if(redirect) res += sizeof(ICMPRedirect);
-    if(param) res+= sizeof(ICMPParamProblem);
+    if(echo) res += sizeof(ICMPv4Echo);
+    if(unreach) res += sizeof(ICMPv4DestUnreach);
+    if(redirect) res += sizeof(ICMPv4Redirect);
+    if(param) res+= sizeof(ICMPv4ParamProblem);
 
+    return res;
+}
+
+
+
+
+// NETWORK CONTROL (Layer 3) -> ICMPv6 Layer
+// ICMPv6 is a network-layer control protocol carried inside IPv6.
+ICMPv6Layer::ICMPv6Layer(const uint8_t *packet) { 
+    icmph = reinterpret_cast<const ICMPv6Header*>(packet);
+    echo = nullptr;
+    error = nullptr;
+
+    size_t fixed_offset = sizeof(ICMPv6Header);
+    switch(icmph ->type) {
+
+        // errors
+        case 1:
+        case 2:
+        case 3:
+        case 4:
+            error = reinterpret_cast<const ICMPv6Error*>(packet + fixed_offset);    
+            break;
+
+        // echo
+        case 128:
+        case 129:
+            echo = reinterpret_cast<const ICMPv6Echo*>(packet + fixed_offset);
+            break;
+            
+        default:
+            // unsupported type
+            break;
+
+    }
+}
+
+void ICMPv6Layer::print(std::ostream& os) const {
+    os << "=== ICMPv6 Layer ===" << std::endl;
+    os << "Type: " << icmph->type << std::endl;
+    os << "Code: " << icmph->code << std::endl;
+    os << "Checksum: " << ntohs(icmph->checksum) << std::endl;
+    os << "=================" << std::endl;
+}
+
+size_t ICMPv6Layer::header_size() const {
+    size_t res = sizeof(ICMPv6Header);    
+    if(echo) res += sizeof(ICMPv6Echo);
+    if(error) res += sizeof(ICMPv6Error);
     return res;
 }
 

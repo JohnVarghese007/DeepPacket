@@ -28,6 +28,25 @@ Test#   Expected                                Received                        
 =======================
 
 
+==== IPV6 TESTS ====
+
+Test#   Expected                                Received                                Result
+----------------------------------------------------------------------------------------------
+1       No Errors Found during validation       No Errors Found during validation       PASS
+2       IPv6: Missing header                    IPv6: Missing header                    PASS
+3       IPv6: Too small                         IPv6: Too small                         PASS
+4       IPv6: Invalid version                   IPv6: Invalid version                   PASS
+5       IPv6: Invalid payload length            IPv6: Invalid payload length            PASS
+6       IPv6: Payload exceeds packet            IPv6: Payload exceeds packet            PASS
+7       IPv6: Unsupported next header           IPv6: Unsupported next header           PASS
+8       IPv6: Hop limit is zero                 IPv6: Hop limit is zero                 PASS
+9       IPv6: Extension header present          IPv6: Extension header present          PASS
+10      IPv6: Unsupported extension header      IPv6: Unsupported extension header      PASS
+11      IPv6: Truncated extension header        IPv6: Truncated extension header        PASS
+
+=======================
+
+
 ==== IPV4 TESTS ====
 
 Test#   Expected                                Received                                Result
@@ -41,6 +60,9 @@ Test#   Expected                                Received                        
 7       IPv4: Invalid total length              IPv4: Invalid total length              PASS
 8       IPv4: Total length exceeds packet       IPv4: Total length exceeds packet       PASS
 9       IPv4: Invalid checksum                  IPv4: Invalid checksum                  PASS
+10      IPv4: Options truncated                 IPv4: Options truncated                 PASS
+11      IPv4: Invalid fragment offset           IPv4: Invalid fragment offset           PASS
+12      IPv4: Invalid MF flag usage             IPv4: Invalid MF flag usage             PASS
 
 =======================
 
@@ -73,18 +95,44 @@ Test#   Expected                                Received                        
 =======================
 
 
-==== ICMP TESTS ====
+==== ICMPV4 TESTS ====
 
 Test#   Expected                                Received                                Result
 ----------------------------------------------------------------------------------------------
 1       No Errors Found during validation       No Errors Found during validation       PASS
-2       ICMP: Missing header                    ICMP: Missing header                    PASS
-3       ICMP: Too small                         ICMP: Too small                         PASS
-4       ICMP: Invalid type                      ICMP: Invalid type                      PASS
-5       ICMP: Invalid code                      ICMP: Invalid code                      PASS
-6       ICMP: Invalid checksum                  ICMP: Invalid checksum                  PASS
-7       ICMP: Truncated Payload                 ICMP: Truncated Payload                 PASS
-8       ICMP: Embedded IPv4 invalid             ICMP: Embedded IPv4 invalid             PASS
+2       ICMPv4: Missing header                  ICMPv4: Missing header                  PASS
+3       ICMPv4: Too small                       ICMPv4: Too small                       PASS
+4       ICMPv4: Invalid type                    ICMPv4: Invalid type                    PASS
+5       ICMPv4: Invalid code                    ICMPv4: Invalid code                    PASS
+6       ICMPv4: Invalid checksum                ICMPv4: Invalid checksum                PASS
+7       ICMPv4: Truncated payload               ICMPv4: Truncated payload               PASS
+8       ICMPv4: Embedded IPv4 invalid           ICMPv4: Embedded IPv4 invalid           PASS
+
+=======================
+
+
+==== ICMPV6 TESTS ====
+
+Test#   Expected                                Received                                Result
+----------------------------------------------------------------------------------------------
+1       No Errors Found during validation       No Errors Found during validation       PASS
+2       ICMPv6: Missing header                  ICMPv6: Missing header                  PASS
+3       ICMPv6: Too small                       ICMPv6: Too small                       PASS
+4       ICMPv6: Invalid type                    ICMPv6: Invalid type                    PASS
+5       ICMPv6: Invalid code                    ICMPv6: Invalid code                    PASS
+6       ICMPv6: Invalid checksum                ICMPv6: Invalid checksum                PASS
+7       ICMPv6: Truncated payload               ICMPv6: Truncated payload               PASS
+8       ICMPv6: Embedded IPv6 invalid           ICMPv6: Embedded IPv6 invalid           PASS
+9       ICMPv6: Invalid error message format    ICMPv6: Invalid error message format    PASS
+
+=======================
+
+
+==== MISC TESTS ====
+
+Test#   Expected                                Received                                Result
+----------------------------------------------------------------------------------------------
+1       Unsupported IP protocol                 Unsupported IP protocol                 PASS
 
 =======================
 

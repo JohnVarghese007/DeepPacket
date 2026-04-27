@@ -2,6 +2,8 @@
 #include "dp/parser/layers.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <string>
+#include <ostream>
 
 
 namespace dp {
@@ -17,22 +19,26 @@ public:
     // Layer Presence Flags
     bool has_eth;
     bool has_arp;
-    bool has_ip;
+    bool has_ipv4;
+    bool has_ipv6;
     bool has_tcp;
     bool has_udp;
-    bool has_icmp;
+    bool has_icmpv4;
+    bool has_icmpv6;
     
     layers::EthernetLayer eth_layer;
     layers::ARPLayer arp_layer;
-    layers::IPv4Layer ip_layer;
+    layers::IPv4Layer ipv4_layer;
+    layers::IPv6Layer ipv6_layer;
     layers::TCPLayer tcp_layer;
     layers::UDPLayer udp_layer;
-    layers::ICMPLayer icmp_layer;
+    layers::ICMPv4Layer icmpv4_layer;
+    layers::ICMPv6Layer icmpv6_layer;
     const uint8_t* payload;
     size_t payload_len;
 
-    // Supported Layer 4 Protocols
-    L4Type l4_type;
+    // Next protocol inside IPv4/IPv6 (TCP, UDP, ICMPv4, ICMPv6 or UNKNOWN)
+    IpProto ip_proto;
 
     // PacketView Constructor
     PacketView(const uint8_t* packet, size_t length);
