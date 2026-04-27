@@ -11,12 +11,11 @@
 #include "dp/validation/validation.hpp"
 
 namespace dp {
-namespace engine {
 
-class Engine {
+class DeepPacketEngine {
 public:
-    Engine();
-    ~Engine();
+    DeepPacketEngine();
+    ~DeepPacketEngine();
 
     // Start/stop live capture on a given interface 
     // (linux only for now, can be extended by modifying the parser module to support windows/mac)
@@ -34,6 +33,9 @@ public:
     // For current design, live capture is also driven by an internal thread in CaptureController
     // without having to explicitly call poll(), but keeping this public is useful for tests/CLI/future modes.
     void poll();
+
+    // Get current capture mode (LIVE, PCAP, or NONE)
+    dp::core::CaptureMode capture_mode() const;
 
     // ----- Data Accessors -------- //
 
@@ -65,5 +67,4 @@ private:
 
 
 
-} // namespace engine
 } // namespace dp

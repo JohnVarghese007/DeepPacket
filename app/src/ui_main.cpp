@@ -22,6 +22,7 @@
 #include "dp/parser/parser.hpp"
 #include "dp/validation/validation.hpp"
 #include "dp/core/capture_controller.hpp"
+#include "dp/engine/engine.hpp"
 
 
 // Forward declarations
@@ -51,7 +52,7 @@ struct PacketRow {
     std::vector<std::string> validationErrors;
 };
 
-static dp::core::CaptureController controller;
+static dp::DeepPacketEngine DeepPacketEngine;
 static int selectedIndex = -1;     // default selected packet index
 static bool capturing = false;    // capture state
 static std::vector<std::string> interfaceOptions;
@@ -65,7 +66,8 @@ static const char* ProtocolToString(dp::core::TransportProtocol protocol) {
     switch (protocol) {
         case dp::core::TransportProtocol::TCP:  return "TCP";
         case dp::core::TransportProtocol::UDP:  return "UDP";
-        case dp::core::TransportProtocol::ICMP: return "ICMP";
+        case dp::core::TransportProtocol::ICMPv4: return "ICMPv4";
+        case dp::core::TransportProtocol::ICMPv6: return "ICMPv6";
         case dp::core::TransportProtocol::ARP:  return "ARP";
         default:                      return "UNKNOWN";
     }
@@ -95,6 +97,13 @@ static std::string IPv4ToString(uint32_t addr) {
     inet_ntop(AF_INET, &addr, buf, sizeof(buf));
     return std::string(buf);
 }
+
+static std::string IPv6ToString(const uint8_t addr[16]) {
+    char buf[INET6_ADDRSTRLEN] = {};
+    inet_ntop(AF_INET6, addr, buf, sizeof(buf));
+    return std::string(buf);
+}
+
 /*
 static std::vector<PacketRow> dummyPackets = {
     {1, 1.180f, "68.114.59.204", "223.241.140.13", "TCP", 71, "17601 → 53 [FIN]", {0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, 0x11, 0x01} },
@@ -224,7 +233,7 @@ void DrawControlBar() {
     //
     // Capture controls
     //
-    if (controller.mode() == dp::core::CaptureMode::PCAP) {
+    if (DeepPacketEngine.capture_mode() == dp::core::CaptureMode::PCAP) {
         ImGui::BeginDisabled();
         ImGui::Button("Start Capture", ImVec2(120, 0));
         ImGui::SameLine();
@@ -244,12 +253,12 @@ void DrawControlBar() {
                         ? interfaceOptions[selectedInterfaceIndex]
                         : "enp0s3";
 
-                capturing = controller.start_live_capture(selected_interface);
+                capturing = DeepPacketEngine.start_live_capture(selected_interface);
             }
         } else {
             if (ImGui::Button("Stop", ImVec2(120, 0))) {
                 capturing = false;
-                controller.stop_capture();
+                DeepPacketEngine.stop_capture();
             }
             ImGui::SameLine();
             ImGui::TextColored(ImVec4(0, 1, 0, 1), "LIVE");
@@ -275,7 +284,7 @@ void DrawLeftPane() {
     ImGui::Text("Packet List");
     ImGui::Separator();
 
-    const auto& summaries = controller.get_summaries_snapshot();
+    const auto& summaries = DeepPacketEngine.get_summaries_snapshot();
     static std::vector<std::string> row_no_cache;
     static std::vector<std::string> row_time_cache;
     static std::vector<std::string> row_proto_cache;
@@ -360,18 +369,43 @@ void DrawPacketDetails(const dp::parser::ParsedPacket& pkt, const dp::validation
         ImGui::Separator();
     }
 
-    // IPv4
-    if (pkt.view.has_ip) {
-        ImGui::Text("IPv4");
+    // ARP
+    if (pkt.view.has_arp) {
+        ImGui::Text("ARP");
         ImGui::Indent();
-        ImGui::Text("Src IP: %s", IPv4ToString(pkt.view.ip_layer.iph->src_addr).c_str());
-        ImGui::Text("Dst IP: %s", IPv4ToString(pkt.view.ip_layer.iph->dest_addr).c_str());
-        ImGui::Text("TTL: %u", pkt.view.ip_layer.iph->ttl);
-        ImGui::Text("Protocol: %u", pkt.view.ip_layer.iph->protocol);
-        ImGui::Text("Header Checksum: 0x%04X", ntohs(pkt.view.ip_layer.iph->header_checksum));
+        ImGui::Text("Hardware Type: %u", ntohs(pkt.view.arp_layer.arp->hardware_type));
+        ImGui::Text("Protocol Type: 0x%04X", ntohs(pkt.view.arp_layer.arp->protocol_type));
+        ImGui::Text("Hardware Size: %u", pkt.view.arp_layer.arp->hardware_len);
+        ImGui::Text("Protocol Size: %u", pkt.view.arp_layer.arp->protocol_len);
+        ImGui::Text("Opcode: %u", ntohs(pkt.view.arp_layer.arp->opcode));
         ImGui::Unindent();
         ImGui::Separator();
     }
+    // IPv4
+    if (pkt.view.has_ipv4) {
+        ImGui::Text("IPv4");
+        ImGui::Indent();
+        ImGui::Text("Src IP: %s", IPv4ToString(pkt.view.ipv4_layer.iph->src_addr).c_str());
+        ImGui::Text("Dst IP: %s", IPv4ToString(pkt.view.ipv4_layer.iph->dest_addr).c_str());
+        ImGui::Text("TTL: %u", pkt.view.ipv4_layer.iph->ttl);
+        ImGui::Text("Protocol: %u", pkt.view.ipv4_layer.iph->protocol);
+        ImGui::Text("Header Checksum: 0x%04X", ntohs(pkt.view.ipv4_layer.iph->header_checksum));
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    // IPv6
+    if (pkt.view.has_ipv6) {
+        ImGui::Text("IPv6");
+        ImGui::Indent();
+        ImGui::Text("Src IP: %s", IPv6ToString(pkt.view.ipv6_layer.iph->src_addr).c_str());
+        ImGui::Text("Dst IP: %s", IPv6ToString(pkt.view.ipv6_layer.iph->dest_addr).c_str());
+        ImGui::Text("Hop Limit: %u", pkt.view.ipv6_layer.iph->hop_limit);
+        ImGui::Text("Next Header: %u", pkt.view.ipv6_layer.iph->next_header);
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
 
     // TCP
     if (pkt.view.has_tcp) {
@@ -397,12 +431,22 @@ void DrawPacketDetails(const dp::parser::ParsedPacket& pkt, const dp::validation
         ImGui::Separator();
     }
 
-    // ICMP
-    if (pkt.view.has_icmp) {
-        ImGui::Text("ICMP");
+    // ICMPv4
+    if (pkt.view.has_icmpv4) {
+        ImGui::Text("ICMPv4");
         ImGui::Indent();
-        ImGui::Text("Type: %u", pkt.view.icmp_layer.icmph->type);
-        ImGui::Text("Code: %u", pkt.view.icmp_layer.icmph->code);
+        ImGui::Text("Type: %u", pkt.view.icmpv4_layer.icmph->type);
+        ImGui::Text("Code: %u", pkt.view.icmpv4_layer.icmph->code);
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    // ICMPv6
+    if (pkt.view.has_icmpv6) {
+        ImGui::Text("ICMPv6");
+        ImGui::Indent();
+        ImGui::Text("Type: %u", pkt.view.icmpv6_layer.icmph->type);
+        ImGui::Text("Code: %u", pkt.view.icmpv6_layer.icmph->code);
         ImGui::Unindent();
         ImGui::Separator();
     }
@@ -508,7 +552,7 @@ void DrawRightPane() {
     }
 
     // --- Retrieve summaries + raw bytes ---
-    const auto& summaries = controller.get_summaries_snapshot();
+    const auto& summaries = DeepPacketEngine.get_summaries_snapshot();
     if (selectedIndex >= (int)summaries.size()) {
         ImGui::Text("Invalid selection.");
         return;
@@ -538,7 +582,7 @@ void DrawRightPane() {
     ImGui::Separator();
 
     // Get raw bytes for this packet
-    dp::parser::PacketView view = controller.get_packet_view(selectedIndex);
+    dp::parser::PacketView view = DeepPacketEngine.get_packet_view(selectedIndex);
     if (view.data == nullptr || view.size() == 0) {
         cachedDetailIndex = -1;
         cachedDetailBytes.clear();
@@ -579,14 +623,26 @@ void DrawRightPane() {
     }
 
     // IPv4
-    if (pkt.view.has_ip) {
+    if (pkt.view.has_ipv4) {
         ImGui::Text("IPv4");
         ImGui::Indent();
-        ImGui::Text("Src IP: %s", IPv4ToString(pkt.view.ip_layer.iph->src_addr).c_str());
-        ImGui::Text("Dst IP: %s", IPv4ToString(pkt.view.ip_layer.iph->dest_addr).c_str());
-        ImGui::Text("TTL: %u", pkt.view.ip_layer.iph->ttl);
-        ImGui::Text("Protocol: %u", pkt.view.ip_layer.iph->protocol);
-        ImGui::Text("Header Checksum: 0x%04X", ntohs(pkt.view.ip_layer.iph->header_checksum));
+        ImGui::Text("Src IP: %s", IPv4ToString(pkt.view.ipv4_layer.iph->src_addr).c_str());
+        ImGui::Text("Dst IP: %s", IPv4ToString(pkt.view.ipv4_layer.iph->dest_addr).c_str());
+        ImGui::Text("TTL: %u", pkt.view.ipv4_layer.iph->ttl);
+        ImGui::Text("Protocol: %u", pkt.view.ipv4_layer.iph->protocol);
+        ImGui::Text("Header Checksum: 0x%04X", ntohs(pkt.view.ipv4_layer.iph->header_checksum));
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    // IPv6
+    if (pkt.view.has_ipv6) {
+        ImGui::Text("IPv6");
+        ImGui::Indent();
+        ImGui::Text("Src IP: %s", IPv6ToString(pkt.view.ipv6_layer.iph->src_addr).c_str());
+        ImGui::Text("Dst IP: %s", IPv6ToString(pkt.view.ipv6_layer.iph->dest_addr).c_str());
+        ImGui::Text("Hop Limit: %u", pkt.view.ipv6_layer.iph->hop_limit);
+        ImGui::Text("Next Header: %u", pkt.view.ipv6_layer.iph->next_header);
         ImGui::Unindent();
         ImGui::Separator();
     }
@@ -615,12 +671,21 @@ void DrawRightPane() {
         ImGui::Separator();
     }
 
-    // ICMP
-    if (pkt.view.has_icmp) {
-        ImGui::Text("ICMP");
+    // ICMPv4
+    if (pkt.view.has_icmpv4) {
+        ImGui::Text("ICMPv4");
         ImGui::Indent();
-        ImGui::Text("Type: %u", pkt.view.icmp_layer.icmph->type);
-        ImGui::Text("Code: %u", pkt.view.icmp_layer.icmph->code);
+        ImGui::Text("Type: %u", pkt.view.icmpv4_layer.icmph->type);
+        ImGui::Text("Code: %u", pkt.view.icmpv4_layer.icmph->code);
+        ImGui::Unindent();
+        ImGui::Separator();
+    }
+
+    if (pkt.view.has_icmpv6) {
+        ImGui::Text("ICMPv6");
+        ImGui::Indent();
+        ImGui::Text("Type: %u", pkt.view.icmpv6_layer.icmph->type);
+        ImGui::Text("Code: %u", pkt.view.icmpv6_layer.icmph->code);
         ImGui::Unindent();
         ImGui::Separator();
     }
@@ -653,8 +718,8 @@ void DrawRightPane() {
 // FOOTER
 void DrawFooter() {
     ImGui::BeginChild("Footer", ImVec2(0, 20), false);
-    const auto& summaries = controller.get_summaries_snapshot();
-    const dp::core::CaptureStats stats = controller.get_stats();
+    const auto& summaries = DeepPacketEngine.get_summaries_snapshot();
+    const dp::core::CaptureStats stats = DeepPacketEngine.get_stats();
     ImGui::Text(
         "Packets: %zu | Displayed: %zu | Captured: %llu | Dropped: %llu",
         summaries.size(),
@@ -703,7 +768,7 @@ int main() {
     // setup imgui style
     ImGui::StyleColorsDark();
 
-    interfaceOptions = controller.list_interfaces();
+    interfaceOptions = DeepPacketEngine.list_interfaces();
     if (interfaceOptions.empty()) {
         interfaceOptions.push_back("enp0s3");
         selectedInterfaceIndex = 0;
@@ -751,7 +816,7 @@ int main() {
         if (ImGuiFileDialog::Instance()->Display("OpenPCAP")) {
             if (ImGuiFileDialog::Instance()->IsOk()) {
                 std::string path = ImGuiFileDialog::Instance()->GetFilePathName();
-                controller.start_pcap_ingest(path);
+                DeepPacketEngine.start_pcap_ingest(path);
                 capturing = false;
                 selectedIndex = -1;
             }
@@ -763,7 +828,7 @@ int main() {
         if (ImGuiFileDialog::Instance()->Display("SavePCAP")) {
             if (ImGuiFileDialog::Instance()->IsOk()) {
                 std::string path = ImGuiFileDialog::Instance()->GetFilePathName();
-                controller.export_pcap(path);
+                DeepPacketEngine.export_pcap(path);
             }
             ImGuiFileDialog::Instance()->Close();
         }

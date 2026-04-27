@@ -385,6 +385,12 @@ bool PacketValidator::validate_ipv4(const PacketView& view, ValidationError& err
     if (proto != 6 && proto != 17 && proto != 1) { // TCP, UDP, ICMPv4
         return true;
     }
+
+    // Skip IPv4 header checksum validation for live capture
+    if (view.is_live_capture) {
+        return true;
+    }
+
     // -----------------------------
     // Header checksum validation (LAST)
     // -----------------------------
@@ -825,6 +831,11 @@ bool PacketValidator::validate_icmpv4(const PacketView& view, ValidationError& e
         }
     }
 
+    // Skip ICMPv4 checksum validation for live capture (checksum offloading)
+    if (view.is_live_capture) {
+        return true;
+    }
+
     // Checksum validation (ICMPv4 uses NO pseudo-header)
     uint16_t received = ntohs(icmp->checksum);
 
@@ -908,18 +919,36 @@ bool PacketValidator::validate_icmpv6(const PacketView& view, ValidationError& e
             break;
 
         default:
-            
+            // Neighbor Discovery (RFC 4861)
+            switch (icmp->type) {
+                case 133: // Router Solicitation
+                case 134: // Router Advertisement
+                case 135: // Neighbor Solicitation
+                case 136: // Neighbor Advertisement
+                case 137: // Redirect
+                    break; // valid ND types
 
-            // if type is in informational range but unknown, it's invalid
-            if (icmp->type >= 5 && icmp->type < 128) {
-                error = ValidationError::ICMPV6_ERROR_MESSAGE_INVALID;
-                return false;
+                // Multicast Listener Discovery (MLD)
+                case 130: // MLD Query
+                case 131: // MLD Report
+                case 132: // MLD Done
+                case 143: // MLDv2 Report
+                    break; // valid MLD types
+
+                default:
+                    // Unknown error-message type (0–127)
+                    if (icmp->type < 128) {
+                        error = ValidationError::ICMPV6_ERROR_MESSAGE_INVALID;
+                        return false;
+                    }
+
+                    // Unknown informational type (128–255)
+                    error = ValidationError::ICMPV6_INVALID_TYPE;
+                    return false;
             }
-            // Other unknown or unsupported ICMPv6 type
-            error = ValidationError::ICMPV6_INVALID_TYPE;
-            return false;
-    }
-
+            break;
+            
+        }
     // RFC 4443: ICMPv6 error messages MUST NOT be sent in response to ICMPv6 error messages
     if (icmp->type <= 4) { // this is an ICMPv6 error message
         const uint8_t* inner_ptr = view.data + icmp_offset + icmp_header_len;
@@ -943,7 +972,7 @@ bool PacketValidator::validate_icmpv6(const PacketView& view, ValidationError& e
 
 
     // Compute ICMPv6 length from actual captured bytes
-    uint16_t payload_len = ntohs(view.ipv6_layer.iph->payload_length);
+    // uint16_t payload_len = ntohs(view.ipv6_layer.iph->payload_length);
     size_t icmp_len = view.size() - icmp_offset; // captured payload size
 
 
@@ -972,6 +1001,11 @@ bool PacketValidator::validate_icmpv6(const PacketView& view, ValidationError& e
             error = ValidationError::ICMPV6_EMBEDDED_IPV6_INVALID;
             return false;
         }
+    }
+
+    // Skip ICMPv6 checksum validation for live capture (checksum offloading)
+    if (view.is_live_capture) {
+        return true;
     }
 
     // Checksum must not be zero in IPv6
