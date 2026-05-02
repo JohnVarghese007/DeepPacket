@@ -1,31 +1,21 @@
 # DeepPacket
 
-A zero-copy network packet inspection tool with live capture, protocol parsing, validation, and a lightweight Wireshark-style UI.
+A zero-copy network packet inspection tool with live capture, protocol parsing, validation, and a lightweight Wireshark-style UI as well as a command-line interface.
 
 > **Status:** v1 complete
-> (IPv6 + Python bindings planned)
+> (Python bindings planned)
 
 ---
 
 ## Overview
 
 DeepPacket is a lightweight packet analysis tool inspired by Wireshark.
-It captures raw Ethernet frames from a Linux network interface, parses protocol layers, validates fields against RFC rules, and displays results through both a custom ImGui-based UI and a headless command-line interface (dpctl).
+It captures raw Ethernet frames from a Linux network interface, parses protocol layers, validates fields against RFC rules, and displays results through either a custom ImGui-based UI or a headless command-line interface (dpctl).
 
-The project explores systems-level engineering concepts including:
-
-* Raw socket capture
-* Zero-copy binary parsing
-* RFC-aware validation
-* Real-time UI rendering
-* PCAP ingestion and export
-* Non-blocking CLI for live capture and analysis.
-
-DeepPacket aims to replicate a small, educational subset of Wireshark’s functionality while maintaining a clean, modular architecture. The modular architecture of the parser and validation layers allow seamless integration of more protocols in addition to the ones natively supported.
-
-A major design goal is stability and minimalism.  
-DeepPacket is built with **no libpcap** and **no third‑party protocol parsers** — all capture, parsing, validation, and serialization logic is implemented manually.  
+DeepPacket is built with **no libpcap** and **no third‑party protocol parsers** — all capture, parsing, validation, and serialization logic is implemented manually.
 Only lightweight UI libraries (Dear ImGui and ImGuiFileDialog) are vendored; platform components such as GLFW and OpenGL are used as **system dependencies**.
+
+The goal is to make packet capture and protocol parsing easy to understand, modify, and experiment with, without the complexity of Wireshark’s codebase.
 
 ---
 
@@ -47,22 +37,21 @@ DeepPacket/
 ├── app/                 # ImGui-based UI application
 ├── tests/               # Unit and integration tests
 ├── cli/                 # dpctl cli
+├── docs/                # documentation
 ├── third_party/         # Vendored dependencies (ImGui, ImGuiFileDialog)
 └── build/               # Build output (generated)
 ```
 
-All modules under dp/ share a consistent namespace (dp::<module>) and are designed to be composable, allowing the UI and test suite to reuse the same packet processing pipeline.
+All modules under dp/ share a consistent namespace (dp::<module>) and are designed to be composable, allowing the UI, CLI and test suite to reuse the same packet processing pipeline.
 
 ---
 
 ## Current Features
 
-### Capture & PCAP
+### Capture
 
 * Live packet capture using Linux raw sockets
-* PCAP file ingestion (offline analysis mode)
-* PCAP export (validated in Wireshark)
-* Automatic mode switching (Live ↔ PCAP)
+* PCAP file ingestion + export
 
 ### Protocol Support
 
@@ -71,73 +60,61 @@ Zero-copy parsing + validation for:
 * Ethernet II
 * IPv4
 * IPv6 (minimal)
+* ICMPv4
+* ICMPv6
 * ARP
 * TCP
 * UDP
-* ICMPv4
-* ICMPv6
 
 ### UI (ImGui-based for now)
 
 * Real-time packet list with timestamps, IPs, protocol, and length
-* Packet details panel with:
-
-  * Summary fields
-  * Layer breakdown (Ethernet/IP/TCP/UDP/ICMP)
-  * Validation results
-* Hex viewer with offset, hex, and ASCII columns
-* Resizable split panes
-* Load/Export PCAP buttons
-* Start/Stop live capture
+* Packet details panel with layer breakdown and validation
+* Hex viewer 
 * Interface selection
-* Filter input (UI only for now, functionality yet to be implemented)
+* Live capture
+* PCAP import/export integration
+* Filter box (UI only, not implemented yet)
 
 ### CLI (dpctl)
 
-* Non‑blocking interactive REPL for live capture and PCAP analysis
-* Real‑time packet stream output with indices, IPs, protocol, length, and validation status
-* Commands include:
-  - interfaces — list available network interfaces
-  - live <iface> — start live capture
-  - stop — stop live capture
-  - read <pcap> — load and summarize a PCAP file
-  - view <index> — detailed packet breakdown in text form
-  - export <pcap> — export current capture to PCAP
-  - info, help, quit
+* Non‑blocking REPL for live capture and PCAP analysis
+* Real‑time packet output stream
 
 ### Validation
 
 * Field-level validation for supported protocols
+* RFC‑aware header and checksum checks  
 * Error reporting per packet
-* RFC-aware checksum and header checks
 
 ### Testing
 
-* Extensive test suite covering:
+* Extensive test suite covering 50+ supported validation errors for malformed packets.
+* For full testing reference `docs/validation.md`
 
-  * Parsing
-  * Validation
-  * Serialization
+---
+
+## Documentation
+
+DeepPacket includes additional documentation for developers and contributors:
+- **Architecture** — engine layout, module responsibilities, data flow, threading model etc.  
+  - `docs/architecture.md`
+- **Design Notes** — goals, constraints, and rationale behind major decisions  
+  - `docs/design.md`
+- **CLI Reference** — full command list and examples  
+  - `docs/cli.md`
+- **Protocol Notes** — parsing logic and validation rules  
+  - `docs/validation.md`
 
 ---
 
 ## Why DeepPacket ?
 
-DeepPacket is not a wrapper around libpcap or a thin UI over existing packet libraries.
-It is a **from‑scratch** packet inspection engine designed to expose how packet capture, parsing, and validation actually work beneath higher‑level tools like Wireshark.
+DeepPacket exists for one reason: to show how packet capture and protocol parsing actually work under the hood.
 
-Most packet analyzers rely heavily on libpcap for capture, buffering, filtering, and device abstraction.
+Most analyzers rely on libpcap and large protocol libraries. DeepPacket avoids those layers entirely — it captures packets directly with Linux raw sockets and parses every supported protocol by hand. The result is a small, readable codebase that’s easy to study, extend, and experiment with.
 
-DeepPacket instead implements:
-- Raw socket capture without external dependencies(linux-only, extendable due to modular architecture)
-- Zero‑copy parsing for predictable, low‑latency performance
-- RFC‑aware validation for detecting malformed or offloaded packets
-- A clean, modular backend engine shared by both UI and CLI
-- A small, readable codebase suitable for teaching and experimentation
-
-
-DeepPacket focuses on clarity, control, and modularity.
-It is intentionally minimal, making it easier to understand, extend, and integrate than large, production‑scale tools.
+If you want to understand packet formats, write custom protocol logic, or explore low‑level networking without the complexity of Wireshark’s codebase, DeepPacket gives you a clean starting point.
 
 ---
 

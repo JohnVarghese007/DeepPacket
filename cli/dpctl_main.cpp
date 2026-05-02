@@ -15,7 +15,7 @@ void set_nonblocking_terminal(bool enable) {
     static struct termios oldt;
     struct termios newt;
 
-    if (enable) {
+    if(enable) {
         tcgetattr(STDIN_FILENO, &oldt);
         newt = oldt;
         newt.c_lflag &= ~(ICANON | ECHO);
@@ -57,34 +57,34 @@ int main() {
     std::string line;
     bool live_running = false;
 
-    while (true) {
+    while(true) {
         std::cout << "dpctl> ";
-        if (!std::getline(std::cin, line)) break;
-        if (line.empty()) continue;
+        if(!std::getline(std::cin, line)) break;
+        if(line.empty()) continue;
 
-        if (line == "quit" || line == "exit") {
+        if(line == "quit" || line == "exit") {
             std::cout << "Goodbye.\n";
             break;
         }
 
-        if (line == "help") {
+        if(line == "help") {
             print_info();
             continue;
         }
 
-        if (line == "info") {
+        if(line == "info") {
             print_info();
             continue;
         }
 
-        if (line == "interfaces") {
+        if(line == "interfaces") {
             auto interfaces = DeepPacketEngine.list_interfaces();
             for (auto& iface : interfaces)
                 std::cout << "  - " << iface << "\n";
             continue;
         }
 
-        if (line == "stop") {
+        if(line == "stop") {
             if (!live_running) {
                 std::cout << "No live capture running.\n";
                 continue;
@@ -98,10 +98,10 @@ int main() {
         }
 
 
-        if (line.rfind("live ", 0) == 0) {
+        if(line.rfind("live ", 0) == 0) {
             std::string iface = line.substr(5);
 
-            if (!DeepPacketEngine.start_live_capture(iface)) {
+            if(!DeepPacketEngine.start_live_capture(iface)) {
                 std::cerr << "Failed to start live capture on " << iface << "\n";
                 continue;
             }
@@ -116,12 +116,12 @@ int main() {
             // Track last printed packet index to only show new packets
             size_t last_printed = (size_t)-1; 
 
-            while (!g_stop) {
+            while(!g_stop) {
                 DeepPacketEngine.poll();
                 // non-blocking input handling to help facilitate stop command during live capture
                 char c;
-                while (read(STDIN_FILENO, &c, 1) > 0) {
-                    if (c == '\n') {
+                while(read(STDIN_FILENO, &c, 1) > 0) {
+                    if(c == '\n') {
                         if (input_buffer == "stop") {
                             g_stop = true;
                             break;
@@ -136,9 +136,9 @@ int main() {
                 auto summaries = DeepPacketEngine.get_summaries_snapshot();
                 size_t count = summaries.size();
 
-                if (count > 0) {
+                if(count > 0) {
                     // print every new packet
-                    for (size_t i = last_printed + 1; i < count; ++i) {
+                    for(size_t i = last_printed + 1; i < count; ++i) {
                         const auto& s = summaries[i];
 
                         std::cout << "#" << i << "  "
@@ -166,16 +166,16 @@ int main() {
         }
 
         
-        if (line.rfind("read ", 0) == 0) {
+        if(line.rfind("read ", 0) == 0) {
             std::string file = line.substr(5);
 
-            if (!DeepPacketEngine.start_pcap_ingest(file)) {
+            if(!DeepPacketEngine.start_pcap_ingest(file)) {
                 std::cerr << "Failed to read PCAP: " << file << "\n";
                 continue;
             }
 
             auto summaries = DeepPacketEngine.get_summaries_snapshot();
-            for (size_t i = 0; i < summaries.size(); ++i) {
+            for(size_t i = 0; i < summaries.size(); ++i) {
                 const auto& s = summaries[i];
                 std::cout << "#" << i << "  "
                           << s.src_ip << " -> " << s.dst_ip
@@ -188,7 +188,7 @@ int main() {
         }
 
        
-        if (line.rfind("view ", 0) == 0) {
+        if(line.rfind("view ", 0) == 0) {
             size_t idx = std::stoul(line.substr(5));
             auto view = DeepPacketEngine.get_packet_view(idx);
             auto validator = DeepPacketEngine.make_validator(view);
@@ -197,10 +197,10 @@ int main() {
             continue;
         }
 
-        if (line.rfind("export ", 0) == 0) {
+        if(line.rfind("export ", 0) == 0) {
             std::string file = line.substr(7);
 
-            if (!DeepPacketEngine.export_pcap(file)) {
+            if(!DeepPacketEngine.export_pcap(file)) {
                 std::cerr << "Failed to export PCAP.\n";
             } else {
                 std::cout << "Exported to " << file << "\n";
