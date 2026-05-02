@@ -231,9 +231,7 @@ void DrawControlBar() {
         ImGui::EndDisabled();
     }
 
-    // GUI toggle for checksum validation (default OFF)
-    ImGui::SameLine(0, 12);
-    ImGui::Checkbox("Validate checksums", &gui_validate_checksums);
+    // (Moved) checksum validation toggle now shown in the packet details pane
 
     // PCAP Controls (LEFT SIDE)
     ImGui::SameLine(0, 20);
@@ -317,6 +315,8 @@ void DrawLeftPane() {
     static std::vector<std::string> row_no_cache;
     static std::vector<std::string> row_time_cache;
     static std::vector<std::string> row_proto_cache;
+    static std::vector<std::string> row_validation_cache;
+    static bool prev_gui_validate_checksums = gui_validate_checksums;
 
     if (row_no_cache.size() > summaries.size()) {
         row_no_cache.resize(summaries.size());
@@ -329,6 +329,7 @@ void DrawLeftPane() {
         row_no_cache.resize(summaries.size());
         row_time_cache.resize(summaries.size());
         row_proto_cache.resize(summaries.size());
+        row_validation_cache.resize(summaries.size());
 
         for (std::size_t i = old_size; i < summaries.size(); ++i) {
             const auto& s = summaries[i];
@@ -339,16 +340,38 @@ void DrawLeftPane() {
             char time_buf[32] = {};
             std::snprintf(time_buf, sizeof(time_buf), "%.3f", time_seconds);
             row_time_cache[i] = time_buf;
+            // compute validation display according to GUI toggle
+            dp::parser::PacketView v = DeepPacketEngine.get_packet_view(i);
+            if (v.data == nullptr || v.size() == 0) {
+                row_validation_cache[i] = "N/A";
+            } else {
+                auto val = DeepPacketEngine.make_validator(v);
+                row_validation_cache[i] = ValidationToString(gui_validation_status(val));
+            }
+        }
+    }
+    // If user toggled the GUI checksum option, refresh validation cache
+    if (prev_gui_validate_checksums != gui_validate_checksums) {
+        prev_gui_validate_checksums = gui_validate_checksums;
+        for (std::size_t i = 0; i < summaries.size(); ++i) {
+            dp::parser::PacketView v = DeepPacketEngine.get_packet_view(i);
+            if (v.data == nullptr || v.size() == 0) {
+                row_validation_cache[i] = "N/A";
+            } else {
+                auto val = DeepPacketEngine.make_validator(v);
+                row_validation_cache[i] = ValidationToString(gui_validation_status(val));
+            }
         }
     }
     
-    if (ImGui::BeginTable("PacketTable", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+    if (ImGui::BeginTable("PacketTable", 7, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("No.");
         ImGui::TableSetupColumn("Time");
         ImGui::TableSetupColumn("Source");
         ImGui::TableSetupColumn("Destination");
         ImGui::TableSetupColumn("Protocol");
         ImGui::TableSetupColumn("Length");
+        ImGui::TableSetupColumn("Validation");
         ImGui::TableHeadersRow();
 
         ImGuiListClipper clipper;
@@ -372,6 +395,7 @@ void DrawLeftPane() {
                 ImGui::TableNextColumn(); ImGui::TextUnformatted(s.dst_ip.c_str());
                 ImGui::TableNextColumn(); ImGui::TextUnformatted(row_proto_cache[i].c_str());
                 ImGui::TableNextColumn(); ImGui::Text("%u", s.length);
+                ImGui::TableNextColumn(); ImGui::TextUnformatted(row_validation_cache[i].c_str());
             }
         }
 
@@ -594,6 +618,30 @@ void DrawRightPane() {
 
     const dp::core::PacketSummary& summary = summaries[selectedIndex];
 
+    // Get raw bytes and prepare parsed packet + validator early so the
+    // summary display can reflect the current GUI checksum toggle.
+    dp::parser::PacketView view = DeepPacketEngine.get_packet_view(selectedIndex);
+    if (view.data == nullptr || view.size() == 0) {
+        cachedDetailIndex = -1;
+        cachedDetailBytes.clear();
+        cachedDetailPacket.reset();
+        cachedDetailValidator.reset();
+        ImGui::Text("Packet data unavailable.");
+        return;
+    }
+
+    if (cachedDetailIndex != selectedIndex || !cachedDetailPacket.has_value() || !cachedDetailValidator.has_value()) {
+        cachedDetailBytes.assign(view.data, view.data + view.size());
+        cachedDetailPacket.emplace(
+            dp::parser::parse_packet(std::span<const uint8_t>(cachedDetailBytes.data(), cachedDetailBytes.size()))
+        );
+        cachedDetailValidator.emplace(cachedDetailPacket->view);
+        cachedDetailIndex = selectedIndex;
+    }
+
+    const dp::parser::ParsedPacket& pkt = *cachedDetailPacket;
+    const dp::validation::PacketValidator& validator = *cachedDetailValidator;
+
     // Summary fields from PacketSummary struct
     ImGui::BeginChild("SummaryFields", ImVec2(0, ImGui::GetWindowHeight() * 0.28f), true);
 
@@ -608,37 +656,17 @@ void DrawRightPane() {
     ImGui::Text("Destination Port: %u", summary.dst_port);
     ImGui::Text("Protocol: %s", ProtocolToString(summary.protocol));
     ImGui::Text("Length: %u", summary.length);
-    ImGui::Text("Validation: %s", ValidationToString(summary.validation));
+
+    // Show validation status according to GUI toggle (if validator available).
+    dp::core::ValidationStatus displayValidation = summary.validation;
+    displayValidation = gui_validation_status(validator);
+    ImGui::Text("Validation: %s", ValidationToString(displayValidation));
+
     ImGui::Text("TCP Flags: 0x%02X", summary.tcp_flags);
 
     ImGui::EndChild();
 
     ImGui::Separator();
-
-    // Get raw bytes for this packet
-    dp::parser::PacketView view = DeepPacketEngine.get_packet_view(selectedIndex);
-    if (view.data == nullptr || view.size() == 0) {
-        cachedDetailIndex = -1;
-        cachedDetailBytes.clear();
-        cachedDetailPacket.reset();
-        cachedDetailValidator.reset();
-        ImGui::Text("Packet data unavailable.");
-        return;
-    }
-
-    // Under current design parsing/validation only happens on a selected packet
-    // The data for a packet is cached and only re-parsed if a different packet is selected or capture is restarted.
-    if (cachedDetailIndex != selectedIndex || !cachedDetailPacket.has_value() || !cachedDetailValidator.has_value()) {
-        cachedDetailBytes.assign(view.data, view.data + view.size());
-        cachedDetailPacket.emplace(
-            dp::parser::parse_packet(std::span<const uint8_t>(cachedDetailBytes.data(), cachedDetailBytes.size()))
-        );
-        cachedDetailValidator.emplace(cachedDetailPacket->view);
-        cachedDetailIndex = selectedIndex;
-    }
-
-    const dp::parser::ParsedPacket& pkt = *cachedDetailPacket;
-    const dp::validation::PacketValidator& validator = *cachedDetailValidator;
 
     // Layer + field breakdown
     ImGui::BeginChild("LayerView", ImVec2(0, ImGui::GetWindowHeight() * 0.34f), true);
@@ -742,6 +770,10 @@ void DrawRightPane() {
         ImGui::TextColored(ImVec4(0.2f, 1, 0.2f, 1), "OK");
     }
     ImGui::Unindent();
+
+    // Checkbox to toggle checksum validation visibility for this packet view
+    ImGui::Separator();
+    ImGui::Checkbox("Validate checksums", &gui_validate_checksums);
 
     ImGui::EndChild();
 
