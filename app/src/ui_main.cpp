@@ -81,6 +81,35 @@ static const char* ValidationToString(dp::core::ValidationStatus status) {
     }
 }
 
+// GUI option: whether checksum validation should be considered/shown in the UI.
+static bool gui_validate_checksums = false; // default: OFF
+
+// Helper: decide if a ValidationError is a checksum-related error.
+static bool is_checksum_error(dp::validation::ValidationError err) {
+    using dp::validation::ValidationError;
+    switch (err) {
+        case ValidationError::IPV4_INVALID_CHECKSUM:
+        case ValidationError::ICMPV4_INVALID_CHECKSUM:
+        case ValidationError::ICMPV6_INVALID_CHECKSUM:
+        case ValidationError::TCP_INVALID_CHECKSUM:
+        case ValidationError::UDP_INVALID_CHECKSUM:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Compute a GUI-facing ValidationStatus from a PacketValidator, honoring the
+// `gui_validate_checksums` flag (when false, checksum errors are ignored).
+static dp::core::ValidationStatus gui_validation_status(const dp::validation::PacketValidator& validator) {
+    for (auto err : validator.errors) {
+        if (err == dp::validation::ValidationError::NONE) continue;
+        if (!gui_validate_checksums && is_checksum_error(err)) continue;
+        return dp::core::ValidationStatus::ERROR;
+    }
+    return dp::core::ValidationStatus::OK;
+}
+
 static std::string MacToString(const uint8_t mac[6]) {
     char buf[18] = {};
     std::snprintf(
@@ -201,6 +230,10 @@ void DrawControlBar() {
         ImGui::Combo("##iface", &dummy, none, 1);
         ImGui::EndDisabled();
     }
+
+    // GUI toggle for checksum validation (default OFF)
+    ImGui::SameLine(0, 12);
+    ImGui::Checkbox("Validate checksums", &gui_validate_checksums);
 
     // PCAP Controls (LEFT SIDE)
     ImGui::SameLine(0, 20);
@@ -450,10 +483,15 @@ void DrawPacketDetails(const dp::parser::ParsedPacket& pkt, const dp::validation
     // Validation
     ImGui::Text("Validation:");
     ImGui::Indent();
+    bool shownAny = false;
     for (auto err : validator.errors) {
-        if (err != dp::validation::ValidationError::NONE) {
-            ImGui::TextColored(ImVec4(1, 0.2f, 0.2f, 1), "%s", dp::validation::to_string(err).c_str());
-        }
+        if (err == dp::validation::ValidationError::NONE) continue;
+        if (!gui_validate_checksums && is_checksum_error(err)) continue;
+        shownAny = true;
+        ImGui::TextColored(ImVec4(1, 0.2f, 0.2f, 1), "%s", dp::validation::to_string(err).c_str());
+    }
+    if (!shownAny) {
+        ImGui::TextColored(ImVec4(0.2f, 1, 0.2f, 1), "OK");
     }
     ImGui::Unindent();
 }
@@ -693,19 +731,12 @@ void DrawRightPane() {
     ImGui::Indent();
     bool ok = true;
     for (auto err : validator.errors) {
-        if (err == dp::validation::ValidationError::ICMPV4_INVALID_CHECKSUM ||
-                err == dp::validation::ValidationError::IPV4_INVALID_CHECKSUM ||
-                err == dp::validation::ValidationError::ICMPV6_INVALID_CHECKSUM ||
-                err == dp::validation::ValidationError::TCP_INVALID_CHECKSUM ||
-                err == dp::validation::ValidationError::UDP_INVALID_CHECKSUM
-        ) {
-            // Ignore checksum errors in GUI for now
-            continue;
+        if (err == dp::validation::ValidationError::NONE) continue;
+        if (!gui_validate_checksums && is_checksum_error(err)) {
+            continue; // user chose to ignore checksum validation in GUI
         }
-        if (err != dp::validation::ValidationError::NONE) {
-            ok = false;
-            ImGui::TextColored(ImVec4(1, 0.2f, 0.2f, 1), "%s", dp::validation::to_string(err).c_str());
-        }
+        ok = false;
+        ImGui::TextColored(ImVec4(1, 0.2f, 0.2f, 1), "%s", dp::validation::to_string(err).c_str());
     }
     if (ok) {
         ImGui::TextColored(ImVec4(0.2f, 1, 0.2f, 1), "OK");
