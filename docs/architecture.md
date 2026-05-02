@@ -47,7 +47,7 @@ The engine is compiled into a single static library (`dp_engine`) and linked by:
 ## Threading Model
 
 DeepPacket currently runs two primary threads:
-
+```bash
    ┌──────────────────────────┐
    │   Capture Thread         │
    │        (Producer)        │
@@ -71,6 +71,7 @@ DeepPacket currently runs two primary threads:
    │       (Consumer)         │
    └──────────────────────────┘
 
+```
 
 ### **Capture Thread (Producer)**
 Created by `CaptureController::start_live_capture()`.
