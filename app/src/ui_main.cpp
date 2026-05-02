@@ -223,16 +223,12 @@ void DrawControlBar() {
         );
     }
 
-    //
-    // NOW push Start/Stop to the right
-    //
+    // Setting the start/stop capture buttons to the right side of the control bar
     float rightAlignX = ImGui::GetWindowWidth() - 180;
     ImGui::SameLine();
     ImGui::SetCursorPosX(rightAlignX);
 
-    //
     // Capture controls
-    //
     if (DeepPacketEngine.capture_mode() == dp::core::CaptureMode::PCAP) {
         ImGui::BeginDisabled();
         ImGui::Button("Start Capture", ImVec2(120, 0));
@@ -560,7 +556,7 @@ void DrawRightPane() {
 
     const dp::core::PacketSummary& summary = summaries[selectedIndex];
 
-    // --- TOP: Summary fields from PacketSummary ---
+    // Summary fields from PacketSummary struct
     ImGui::BeginChild("SummaryFields", ImVec2(0, ImGui::GetWindowHeight() * 0.28f), true);
 
     ImGui::Text("Summary Fields");
@@ -592,7 +588,8 @@ void DrawRightPane() {
         return;
     }
 
-    // --- Re-parse + validate only when selection changes ---
+    // Under current design parsing/validation only happens on a selected packet
+    // The data for a packet is cached and only re-parsed if a different packet is selected or capture is restarted.
     if (cachedDetailIndex != selectedIndex || !cachedDetailPacket.has_value() || !cachedDetailValidator.has_value()) {
         cachedDetailBytes.assign(view.data, view.data + view.size());
         cachedDetailPacket.emplace(
@@ -605,7 +602,7 @@ void DrawRightPane() {
     const dp::parser::ParsedPacket& pkt = *cachedDetailPacket;
     const dp::validation::PacketValidator& validator = *cachedDetailValidator;
 
-    // --- TOP: Layer + Field Breakdown ---
+    // Layer + field breakdown
     ImGui::BeginChild("LayerView", ImVec2(0, ImGui::GetWindowHeight() * 0.34f), true);
 
     ImGui::Text("Layers");
@@ -681,6 +678,7 @@ void DrawRightPane() {
         ImGui::Separator();
     }
 
+    // ICMPv6
     if (pkt.view.has_icmpv6) {
         ImGui::Text("ICMPv6");
         ImGui::Indent();
@@ -695,6 +693,15 @@ void DrawRightPane() {
     ImGui::Indent();
     bool ok = true;
     for (auto err : validator.errors) {
+        if (err == dp::validation::ValidationError::ICMPV4_INVALID_CHECKSUM ||
+                err == dp::validation::ValidationError::IPV4_INVALID_CHECKSUM ||
+                err == dp::validation::ValidationError::ICMPV6_INVALID_CHECKSUM ||
+                err == dp::validation::ValidationError::TCP_INVALID_CHECKSUM ||
+                err == dp::validation::ValidationError::UDP_INVALID_CHECKSUM
+        ) {
+            // Ignore checksum errors in GUI for now
+            continue;
+        }
         if (err != dp::validation::ValidationError::NONE) {
             ok = false;
             ImGui::TextColored(ImVec4(1, 0.2f, 0.2f, 1), "%s", dp::validation::to_string(err).c_str());
@@ -709,7 +716,7 @@ void DrawRightPane() {
 
     ImGui::Separator();
 
-    // --- BOTTOM: Hex Viewer ---
+    // Rendering hex viewer with the raw bytes, simiar to how wireshark looks
     DrawHexViewer(cachedDetailBytes);
 }
 
@@ -811,7 +818,7 @@ int main() {
         DrawHeaderBar();
         DrawControlBar();    
         
-        // Handle Open PCAP dialog
+        // Open PCAP handler
         ImGui::SetNextWindowSize(ImVec2(900, 600), ImGuiCond_Always);
         if (ImGuiFileDialog::Instance()->Display("OpenPCAP")) {
             if (ImGuiFileDialog::Instance()->IsOk()) {
@@ -823,7 +830,7 @@ int main() {
             ImGuiFileDialog::Instance()->Close();
         }
 
-        // Handle Save PCAP dialog
+        // Save PCAP handler
         ImGui::SetNextWindowSize(ImVec2(900, 600), ImGuiCond_Always);
         if (ImGuiFileDialog::Instance()->Display("SavePCAP")) {
             if (ImGuiFileDialog::Instance()->IsOk()) {

@@ -10,9 +10,7 @@
 
 static volatile bool g_stop = false;
 
-// ------------------------------------------------------------
-// Terminal raw mode for non-blocking input during live capture
-// ------------------------------------------------------------
+// Setting terminal to non-blocking mode for live capture during input handling
 void set_nonblocking_terminal(bool enable) {
     static struct termios oldt;
     struct termios newt;
@@ -99,9 +97,7 @@ int main() {
             continue;
         }
 
-        // ------------------------------------------------------------
-        // LIVE CAPTURE
-        // ------------------------------------------------------------
+
         if (line.rfind("live ", 0) == 0) {
             std::string iface = line.substr(5);
 
@@ -122,10 +118,7 @@ int main() {
 
             while (!g_stop) {
                 DeepPacketEngine.poll();
-
-                // -----------------------------
-                // Non-blocking input for "stop"
-                // -----------------------------
+                // non-blocking input handling to help facilitate stop command during live capture
                 char c;
                 while (read(STDIN_FILENO, &c, 1) > 0) {
                     if (c == '\n') {
@@ -139,9 +132,7 @@ int main() {
                     }
                 }
 
-                // -----------------------------
-                // Print ALL packets since last poll
-                // -----------------------------
+                // Printing all packets since last poll
                 auto summaries = DeepPacketEngine.get_summaries_snapshot();
                 size_t count = summaries.size();
 
@@ -161,23 +152,20 @@ int main() {
                     last_printed = count - 1;
                 }
 
-                usleep(5000); // 5ms is smooth + low CPU
+                usleep(5000); // new pakets polled every 5 ms for now
             }
 
+            // cleanup
             set_nonblocking_terminal(false);
-
             DeepPacketEngine.stop_capture();
             live_running = false;
             g_stop = false;
             set_nonblocking_terminal(false);
-
             std::cout << "Capture stopped.\n";
             continue;
         }
 
-        // ------------------------------------------------------------
-        // READ PCAP
-        // ------------------------------------------------------------
+        
         if (line.rfind("read ", 0) == 0) {
             std::string file = line.substr(5);
 
@@ -199,23 +187,16 @@ int main() {
             continue;
         }
 
-        // ------------------------------------------------------------
-        // VIEW PACKET
-        // ------------------------------------------------------------
+       
         if (line.rfind("view ", 0) == 0) {
             size_t idx = std::stoul(line.substr(5));
-
             auto view = DeepPacketEngine.get_packet_view(idx);
             auto validator = DeepPacketEngine.make_validator(view);
-
             std::cout << view.to_string();
             std::cout << validator.to_string();
             continue;
         }
 
-        // ------------------------------------------------------------
-        // EXPORT PCAP
-        // ------------------------------------------------------------
         if (line.rfind("export ", 0) == 0) {
             std::string file = line.substr(7);
 
