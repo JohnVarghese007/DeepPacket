@@ -56,7 +56,9 @@ public:
     ssize_t read_frame(uint8_t* out, std::size_t max_len);
 
     // Optional new API for Consumers(GUI)
-    bool pop_packet(uint8_t* out, size_t& len);
+    // Pops one packet into a caller-owned buffer. On a capacity failure, len
+    // is set to the required size and the packet is discarded.
+    bool pop_packet(uint8_t* out, size_t capacity, size_t& len);
     bool pop_packet(Packet& out);
     std::size_t pop_batch(std::vector<Packet>& out, std::size_t max_packets);
 

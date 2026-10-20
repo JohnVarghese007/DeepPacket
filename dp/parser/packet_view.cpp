@@ -34,6 +34,12 @@ PacketView::PacketView(const uint8_t* packet, size_t length) :
     parse_layers();
 }
 
+PacketView::PacketView(std::shared_ptr<const std::vector<uint8_t>> packet) :
+    PacketView(packet ? packet->data() : nullptr, packet ? packet->size() : 0)
+{
+    owned_packet = std::move(packet);
+}
+
 
 // Parse Layers
 void PacketView::parse_layers() {
@@ -57,11 +63,16 @@ void PacketView::parse_layers() {
     else if (ethertype == IPv6_ETHERTYPE) {
         // IPv6 Layer
         size_t ipv6_offset = sizeof(EthernetHeader);
-        if(length < ipv6_offset + 1) { 
+        if (length == ipv6_offset) {
             return;
         }
-        ipv6_layer = layers::IPv6Layer(data + ipv6_offset);
+
         has_ipv6 = true;
+        if (length < ipv6_offset + sizeof(IPv6Header)) {
+            return;
+        }
+
+        ipv6_layer = layers::IPv6Layer(data + ipv6_offset);
 
         // IPv6 has fixed header size of 40 bytes
         size_t l4_offset = ipv6_offset + sizeof(IPv6Header);

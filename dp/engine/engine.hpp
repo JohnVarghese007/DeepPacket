@@ -29,9 +29,10 @@ public:
     // List available interfaces for live capture (linux only for now)
     std::vector<std::string> list_interfaces() const;
 
-    // Drives the capture pipeline once (used by live capture / future modes).
-    // For current design, live capture is also driven by an internal thread in CaptureController
-    // without having to explicitly call poll(), but keeping this public is useful for tests/CLI/future modes.
+    // Drives the live capture pipeline once. The caller that owns the frontend
+    // event loop must call this method; it is the sole queue consumer.
+    // Lifecycle operations are serialized internally, but poll() still must
+    // not be called concurrently by multiple consumer threads.
     void poll();
 
     // Get current capture mode (LIVE, PCAP, or NONE)

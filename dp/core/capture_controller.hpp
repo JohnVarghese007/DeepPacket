@@ -22,11 +22,9 @@
 #pragma once
 
 #include <vector>
-#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
 
 #include "dp/core/packet_summary.hpp"
 #include "dp/capture/raw-capture.hpp"
@@ -70,7 +68,8 @@ public:
     // Interface discovery for UI
     std::vector<std::string> list_interfaces() const;
 
-    // Called by GUI/CLI each frame/tick
+    // Called by the GUI/CLI owner thread each frame/tick. This is the sole
+    // consumer of the live-capture SPSC queue.
     void poll();
 
     // Accessors
@@ -78,11 +77,12 @@ public:
 
     CaptureStats get_stats() const;
 
-    // Mode switching (v2)
+    // Mode switching (v2). Lifecycle operations are serialized internally.
     void set_mode(CaptureMode mode);
     CaptureMode mode() const;
 
-    //for on-demand packetview reconstruction
+    // Returns a view that owns a shared reference to the packet bytes, so the
+    // view remains valid even if the controller's summaries are cleared.
     dp::parser::PacketView get_packet_view(size_t index) const;
 
     // Clear/reset
@@ -95,10 +95,11 @@ private:
     PacketSummary make_summary(const dp::parser::ParsedPacket& pkt, const dp::validation::PacketValidator& validator) const;
 
     // Raw packet byte storage for reconstructing packetview on demand
-    std::vector<std::vector<uint8_t>> raw_packets;
+    std::vector<std::shared_ptr<const std::vector<uint8_t>>> raw_packets;
 
     // Capture source  ( LIVE OR PCAP)
     std::unique_ptr<dp::capture::SocketCapture> capture;
+    mutable std::mutex lifecycle_mutex;
     
     // Summaries
     std::vector<PacketSummary> summaries;
@@ -110,16 +111,8 @@ private:
 
     CaptureMode mode_ = CaptureMode::NONE;
 
-    // A separate thread for polling live capture to avoid blocking the main thread. Uses atomic flag for clean shutdown.
-    std::thread poll_thread;
-    std::atomic<bool> poll_running = false;
-    void start_polling();
-    void stop_polling();
-
 };
 
 
 } // namespace core
 } // namespace dp
-
-

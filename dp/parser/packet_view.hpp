@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <string>
 #include <ostream>
+#include <memory>
+#include <vector>
 
 
 namespace dp {
@@ -42,6 +44,8 @@ public:
 
     // PacketView Constructor
     PacketView(const uint8_t* packet, size_t length);
+    // Keeps packet bytes alive for the lifetime of this view and its copies.
+    PacketView(std::shared_ptr<const std::vector<uint8_t>> packet);
 
 
     // Print Packet Details
@@ -58,6 +62,7 @@ public:
 
     
 private:
+    std::shared_ptr<const std::vector<uint8_t>> owned_packet;
     void parse_layers();
 };
 

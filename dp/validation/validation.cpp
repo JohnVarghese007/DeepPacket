@@ -417,10 +417,7 @@ bool PacketValidator::validate_ipv4(const PacketView& view, ValidationError& err
 
 
 bool PacketValidator::validate_ipv6(const PacketView& view, ValidationError& error) {
-    const IPv6Layer& ip_layer = view.ipv6_layer;
-    const IPv6Header* iph = ip_layer.iph;
-
-    if (!view.has_ipv6 || !iph) {
+    if (!view.has_ipv6) {
         error = ValidationError::MISSING_IPV6_HEADER;
         return false;
     }
@@ -428,6 +425,13 @@ bool PacketValidator::validate_ipv6(const PacketView& view, ValidationError& err
     // Packet must be large enough for Ethernet + IPv6 header (40 bytes)
     if (view.size() < ETHERNET_HEADER_SIZE + IPV6_HEADER_SIZE) {
         error = ValidationError::TOO_SMALL_FOR_IPV6;
+        return false;
+    }
+
+    const IPv6Layer& ip_layer = view.ipv6_layer;
+    const IPv6Header* iph = ip_layer.iph;
+    if (!iph) {
+        error = ValidationError::MISSING_IPV6_HEADER;
         return false;
     }
 

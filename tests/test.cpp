@@ -1,9 +1,12 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <fstream>
+#include <cstdio>
 #include "dp/parser/parser.hpp"
 #include "dp/validation/validation.hpp"
 #include "dp/capture/raw-capture.hpp"
+#include "dp/pcap/pcap_reader.hpp"
 #include "packet_builder.hpp"
 
 
@@ -610,6 +613,11 @@ void run_ipv6_tests() {
     std::vector<uint8_t> too_small = valid_packet;
     too_small.resize(14 + 20); // Less than 40 bytes
     tests.push_back({too_small, dp::validation::ValidationError::TOO_SMALL_FOR_IPV6});
+
+    // truncated before the IPv6 next-header field
+    std::vector<uint8_t> too_small_for_next_header = valid_packet;
+    too_small_for_next_header.resize(14 + 6);
+    tests.push_back({too_small_for_next_header, dp::validation::ValidationError::TOO_SMALL_FOR_IPV6});
     
     // invalid ipv6 version
     std::vector<uint8_t> invalid_version = valid_packet;
@@ -1070,6 +1078,85 @@ void run_misc_tests() {
     std::cout << oss.str();
 }
 
+static void append_u16(std::vector<uint8_t>& bytes, uint16_t value, bool little_endian) {
+    if (little_endian) {
+        bytes.push_back(static_cast<uint8_t>(value));
+        bytes.push_back(static_cast<uint8_t>(value >> 8));
+    } else {
+        bytes.push_back(static_cast<uint8_t>(value >> 8));
+        bytes.push_back(static_cast<uint8_t>(value));
+    }
+}
+
+static void append_u32(std::vector<uint8_t>& bytes, uint32_t value, bool little_endian) {
+    if (little_endian) {
+        bytes.push_back(static_cast<uint8_t>(value));
+        bytes.push_back(static_cast<uint8_t>(value >> 8));
+        bytes.push_back(static_cast<uint8_t>(value >> 16));
+        bytes.push_back(static_cast<uint8_t>(value >> 24));
+    } else {
+        bytes.push_back(static_cast<uint8_t>(value >> 24));
+        bytes.push_back(static_cast<uint8_t>(value >> 16));
+        bytes.push_back(static_cast<uint8_t>(value >> 8));
+        bytes.push_back(static_cast<uint8_t>(value));
+    }
+}
+
+static bool write_pcap_fixture(const char* filename, bool little_endian) {
+    std::vector<uint8_t> bytes;
+    if (little_endian) {
+        bytes.insert(bytes.end(), {0xD4, 0xC3, 0xB2, 0xA1});
+    } else {
+        bytes.insert(bytes.end(), {0xA1, 0xB2, 0xC3, 0xD4});
+    }
+    append_u16(bytes, 2, little_endian);
+    append_u16(bytes, 4, little_endian);
+    append_u32(bytes, 0, little_endian);       // thiszone
+    append_u32(bytes, 0, little_endian);       // sigfigs
+    append_u32(bytes, 65535, little_endian);   // snaplen
+    append_u32(bytes, 1, little_endian);       // Ethernet link type
+
+    append_u32(bytes, 0x11223344, little_endian);
+    append_u32(bytes, 0x55667788, little_endian);
+    append_u32(bytes, 4, little_endian);
+    append_u32(bytes, 4, little_endian);
+    bytes.insert(bytes.end(), {0xDE, 0xAD, 0xBE, 0xEF});
+
+    std::ofstream file(filename, std::ios::binary);
+    file.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    return file.good();
+}
+
+bool run_pcap_tests() {
+    std::cout << "\n==== PCAP TESTS ====\n";
+
+    bool passed = true;
+    for (bool little_endian : {true, false}) {
+        const char* filename = little_endian
+            ? "/tmp/deeppacket-little-endian.pcap"
+            : "/tmp/deeppacket-big-endian.pcap";
+
+        passed = write_pcap_fixture(filename, little_endian) && passed;
+
+        dp::pcap::Reader reader(filename);
+        std::vector<dp::pcap::Packet> packets;
+        const bool valid = reader.valid();
+        const bool read = valid && reader.read_all(packets);
+        const bool fields_match = read && packets.size() == 1 &&
+            packets[0].ts_sec == 0x11223344 &&
+            packets[0].ts_usec == 0x55667788 &&
+            packets[0].data == std::vector<uint8_t>({0xDE, 0xAD, 0xBE, 0xEF});
+
+        std::cout << (little_endian ? "Little-endian" : "Big-endian")
+                  << " PCAP: " << (fields_match ? "PASS" : "FAIL") << "\n";
+        passed = fields_match && passed;
+        std::remove(filename);
+    }
+
+    return passed;
+}
+
+
 
 
 int run_capture_test() {
@@ -1120,6 +1207,9 @@ int main() {
     run_icmpv4_tests();
     run_icmpv6_tests();
     run_misc_tests();
+    if (!run_pcap_tests()) {
+        return 1;
+    }
 
     //int res = run_capture_test();
     //if(res!=0) {
