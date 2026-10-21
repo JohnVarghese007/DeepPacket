@@ -31,8 +31,8 @@ The engine is compiled into a single static library (`dp_engine`) and linked by:
 
 > AF_PACKET socket → CaptureController → SPSC Ring Buffer → UI/CLI
 - The capture thread blocks on `recvfrom()`
-- Raw bytes are wrapped into a `PacketSummary`
-- Summaries are pushed into a lock‑free SPSC queue
+- Captured packet data is pushed into a lock‑free SPSC queue
+- The frontend/controller thread polls the queue, then parses, validates, and stores summaries
 - The UI/CLI consumes summaries and reconstructs full packet views on demand
 
 ### 2. Capture (PCAP Mode)
@@ -46,7 +46,7 @@ The engine is compiled into a single static library (`dp_engine`) and linked by:
 
 ## Threading Model
 
-DeepPacket currently runs two primary threads:
+DeepPacket uses a multithreaded producer–consumer pipeline:
 ```bash
    ┌──────────────────────────┐
    │   Capture Thread         │
@@ -84,7 +84,7 @@ Responsibilities:
 - Push into SPSC ring buffer
 
 ### **UI Thread (Consumer)**
-Runs the ImGui event loop.
+Runs the ImGui event loop or the CLI processing loop.
 
 Responsibilities:
 - Poll the ring buffer
@@ -94,6 +94,16 @@ Responsibilities:
 - Render UI
 
 This separation ensures the UI never stalls under heavy traffic.
+
+Capture ownership and mode transitions are serialized separately from packet transfer.
+The controller uses lifecycle synchronization when replacing or stopping a capture
+source, while summary and statistics access are synchronized independently. The
+SPSC queue still requires exactly one producer and one consumer; lifecycle
+synchronization does not permit multiple concurrent queue consumers.
+
+Retained packet bytes use shared ownership so a returned packet view remains valid
+when controller summaries are cleared. Parsing is zero-copy over the retained
+packet buffer, although live packets may be copied once into retained storage.
 
 ### Lock‑Free Ring Buffer
 
@@ -125,6 +135,5 @@ Both UI and CLI use this API.
 
 - Additional protocol support
 - Filter functionality
-- Multi‑threaded parsing pipeline
+- Multi-worker parsing and validation pipeline
 - Optional Qt‑based UI
-

@@ -35,14 +35,15 @@ Test#   Expected                                Received                        
 1       No Errors Found during validation       No Errors Found during validation       PASS
 2       IPv6: Missing header                    IPv6: Missing header                    PASS
 3       IPv6: Too small                         IPv6: Too small                         PASS
-4       IPv6: Invalid version                   IPv6: Invalid version                   PASS
-5       IPv6: Invalid payload length            IPv6: Invalid payload length            PASS
-6       IPv6: Payload exceeds packet            IPv6: Payload exceeds packet            PASS
-7       IPv6: Unsupported next header           IPv6: Unsupported next header           PASS
-8       IPv6: Hop limit is zero                 IPv6: Hop limit is zero                 PASS
-9       IPv6: Extension header present          IPv6: Extension header present          PASS
-10      IPv6: Unsupported extension header      IPv6: Unsupported extension header      PASS
-11      IPv6: Truncated extension header        IPv6: Truncated extension header        PASS
+4       IPv6: Too small                         IPv6: Too small                         PASS
+5       IPv6: Invalid version                   IPv6: Invalid version                   PASS
+6       IPv6: Invalid payload length            IPv6: Invalid payload length            PASS
+7       IPv6: Payload exceeds packet            IPv6: Payload exceeds packet            PASS
+8       IPv6: Unsupported next header           IPv6: Unsupported next header           PASS
+9       IPv6: Hop limit is zero                 IPv6: Hop limit is zero                 PASS
+10      IPv6: Extension header present          IPv6: Extension header present          PASS
+11      IPv6: Unsupported extension header      IPv6: Unsupported extension header      PASS
+12      IPv6: Truncated extension header        IPv6: Truncated extension header        PASS
 
 =======================
 
@@ -136,3 +137,7 @@ Test#   Expected                                Received                        
 
 =======================
 
+
+==== PCAP TESTS ====
+Little-endian PCAP: PASS
+Big-endian PCAP: PASS
