@@ -101,12 +101,18 @@ void SocketCapture::capture_loop() {
 
 
 // consumer
-bool SocketCapture::pop_packet(uint8_t* out, size_t& len) {
+bool SocketCapture::pop_packet(uint8_t* out, size_t capacity, size_t& len) {
     Packet pkt;
-    if (!ring.pop(pkt))
+    len = 0;
+    if (!ring.pop(pkt)) {
         return false;
+    }
 
     len = pkt.len;
+    if (out == nullptr || capacity < len) {
+        return false;
+    }
+
     std::memcpy(out, pkt.data.data(), len);
     return true;
 }

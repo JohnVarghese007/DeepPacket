@@ -58,19 +58,19 @@ CaptureController::~CaptureController()
 
 bool CaptureController::start_live_capture(const std::string& interface)
 {
-    // For now, SocketCapture is default-constructed and is assumed to
-    // bind to the appropriate interface internally. If you later add
-    // an interface-aware constructor, wire it up here.
-    capture = std::make_unique<dp::capture::SocketCapture>(interface);
+    std::lock_guard<std::mutex> lock(lifecycle_mutex);
+    mode_ = CaptureMode::NONE;
+    capture.reset();
 
-    if (!capture->valid()) {
-        capture.reset();
-        mode_ = CaptureMode::NONE;
+    auto next_capture = std::make_unique<dp::capture::SocketCapture>(interface);
+
+    if (!next_capture->valid()) {
         return false;
     }
 
+    capture = std::move(next_capture);
     mode_ = CaptureMode::LIVE;
-    start_polling();
+
     // You can reset stats/summaries here if you want a fresh session:
     // clear_summaries();
     // reset_stats();
@@ -84,14 +84,15 @@ std::vector<std::string> CaptureController::list_interfaces() const
 
 void CaptureController::stop_capture()
 {
-    stop_polling();
+    std::lock_guard<std::mutex> lock(lifecycle_mutex);
     mode_ = CaptureMode::NONE;
     capture.reset();
 }
 
 bool CaptureController::start_pcap_ingest(const std::string& filename) {
-    // stop live capture if currently running
-    stop_capture();
+    std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex);
+    mode_ = CaptureMode::NONE;
+    capture.reset();
 
     // load pcap file
     dp::pcap::Reader reader(filename);
@@ -134,7 +135,8 @@ bool CaptureController::start_pcap_ingest(const std::string& filename) {
         {
             std::scoped_lock lock(summaries_mutex);
             summaries.push_back(summary);
-            raw_packets.emplace_back(data, data + len);
+            raw_packets.emplace_back(
+                std::make_shared<const std::vector<uint8_t>>(data, data + len));
         }
 
         // Update stats
@@ -153,6 +155,8 @@ bool CaptureController::start_pcap_ingest(const std::string& filename) {
 
 bool CaptureController::export_pcap(const std::string& filename) const
 {
+    std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex);
+
     if (raw_packets.empty()) {
         return false;
     }
@@ -165,7 +169,7 @@ bool CaptureController::export_pcap(const std::string& filename) const
     std::scoped_lock lock(summaries_mutex);
 
     for (size_t i = 0; i < raw_packets.size(); i++) {
-        const auto& bytes = raw_packets[i];
+        const auto& bytes = *raw_packets[i];
         const auto& summary = summaries[i];
 
         writer.write_packet(
@@ -183,6 +187,8 @@ bool CaptureController::export_pcap(const std::string& filename) const
 
 void CaptureController::poll()
 {
+    std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex);
+
     if (mode_ != CaptureMode::LIVE || !capture) {
         return;
     }
@@ -202,26 +208,6 @@ void CaptureController::poll()
     }
 }
 
-void CaptureController::start_polling() {
-    if (poll_running) return; // already running
-
-    poll_running = true;
-    poll_thread = std::thread([this]() {
-        while (poll_running) {
-            this->poll();
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
-        }
-    });
-}
-
-void CaptureController::stop_polling() {
-    poll_running = false;
-    if (poll_thread.joinable()) {
-        poll_thread.join();
-    }
-}
-
-
 std::vector<PacketSummary> CaptureController::get_summaries_snapshot() const
 {
     std::lock_guard<std::mutex> lock(summaries_mutex);
@@ -232,6 +218,7 @@ std::vector<PacketSummary> CaptureController::get_summaries_snapshot() const
 CaptureStats CaptureController::get_stats() const
 {
     CaptureStats result;
+    std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex);
 
     {
         std::lock_guard<std::mutex> lock(stats_mutex);
@@ -251,11 +238,13 @@ CaptureStats CaptureController::get_stats() const
 
 void CaptureController::set_mode(CaptureMode m)
 {
+    std::lock_guard<std::mutex> lock(lifecycle_mutex);
     mode_ = m;
 }
 
 CaptureMode CaptureController::mode() const
 {
+    std::lock_guard<std::mutex> lock(lifecycle_mutex);
     return mode_;
 }
 
@@ -268,8 +257,7 @@ dp::parser::PacketView CaptureController::get_packet_view(size_t index) const
         return dp::parser::PacketView(nullptr, 0);
     }
 
-    const auto& bytes = raw_packets[index];
-    return dp::parser::PacketView(bytes.data(), bytes.size());
+    return dp::parser::PacketView(raw_packets[index]);
 }
 
 void CaptureController::clear_summaries()
@@ -303,7 +291,8 @@ void CaptureController::process_packet(const uint8_t* data, size_t len)
     {
         std::lock_guard<std::mutex> lock(summaries_mutex);
         summaries.push_back(std::move(summary));
-        raw_packets.emplace_back(data, data + len);
+        raw_packets.emplace_back(
+            std::make_shared<const std::vector<uint8_t>>(data, data + len));
     }
 
     {

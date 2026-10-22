@@ -861,6 +861,7 @@ int main() {
 
         // poll events
         glfwPollEvents();
+        DeepPacketEngine.poll();
 
         // start imgui frame
         ImGui_ImplOpenGL3_NewFrame();
@@ -969,6 +970,5 @@ static void glfw_error_callback(int error, const char* description)
 {
     fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
-
 
 

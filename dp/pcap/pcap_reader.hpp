@@ -26,7 +26,7 @@ public:
 private:
     std::string filename_;
     bool ok_ = false; // set to true if the file was successfully opened and read
-    bool is_little_endian_ = false; // set based on the magic number in the global header
+    bool file_little_endian_ = false; // set from the on-disk magic-number byte order
 };
 
 

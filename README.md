@@ -122,6 +122,12 @@ If you want to understand packet formats, write custom protocol logic, or explor
 
 DeepPacket uses **CMake**.
 
+On Debian/Ubuntu, install the build dependencies with:
+
+```bash
+sudo apt install cmake build-essential libglfw3-dev libgl1-mesa-dev nlohmann-json3-dev
+```
+
 ### 1. Configure & Build
 
 From the project root:
@@ -180,6 +186,7 @@ DeepPacket also relies on the following **system-provided** dependencies:
 
 * **GLFW** — Windowing + input backend (zlib/libpng), installed via system package manager  
 * **OpenGL** — Provided by the system’s graphics drivers (Mesa/NVIDIA/AMD)
+* **nlohmann/json** — Header-only JSON serialization library, installed via system package manager
 
 Only the vendored libraries are stored in the repository; system dependencies must be installed separately.
 

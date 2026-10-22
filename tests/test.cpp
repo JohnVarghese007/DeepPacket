@@ -1,11 +1,22 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <fstream>
+#include <cstdio>
 #include "dp/parser/parser.hpp"
 #include "dp/validation/validation.hpp"
 #include "dp/capture/raw-capture.hpp"
+#include "dp/capture/spsc_ring_buffer.hpp"
+#include "dp/pcap/pcap_reader.hpp"
 #include "packet_builder.hpp"
+#include "stress.hpp"
 
+#include <atomic>
+#include <chrono>
+#include <exception>
+#include <mutex>
+#include <span>
+#include <thread>
 
 
 
@@ -610,6 +621,11 @@ void run_ipv6_tests() {
     std::vector<uint8_t> too_small = valid_packet;
     too_small.resize(14 + 20); // Less than 40 bytes
     tests.push_back({too_small, dp::validation::ValidationError::TOO_SMALL_FOR_IPV6});
+
+    // truncated before the IPv6 next-header field
+    std::vector<uint8_t> too_small_for_next_header = valid_packet;
+    too_small_for_next_header.resize(14 + 6);
+    tests.push_back({too_small_for_next_header, dp::validation::ValidationError::TOO_SMALL_FOR_IPV6});
     
     // invalid ipv6 version
     std::vector<uint8_t> invalid_version = valid_packet;
@@ -1070,6 +1086,85 @@ void run_misc_tests() {
     std::cout << oss.str();
 }
 
+static void append_u16(std::vector<uint8_t>& bytes, uint16_t value, bool little_endian) {
+    if (little_endian) {
+        bytes.push_back(static_cast<uint8_t>(value));
+        bytes.push_back(static_cast<uint8_t>(value >> 8));
+    } else {
+        bytes.push_back(static_cast<uint8_t>(value >> 8));
+        bytes.push_back(static_cast<uint8_t>(value));
+    }
+}
+
+static void append_u32(std::vector<uint8_t>& bytes, uint32_t value, bool little_endian) {
+    if (little_endian) {
+        bytes.push_back(static_cast<uint8_t>(value));
+        bytes.push_back(static_cast<uint8_t>(value >> 8));
+        bytes.push_back(static_cast<uint8_t>(value >> 16));
+        bytes.push_back(static_cast<uint8_t>(value >> 24));
+    } else {
+        bytes.push_back(static_cast<uint8_t>(value >> 24));
+        bytes.push_back(static_cast<uint8_t>(value >> 16));
+        bytes.push_back(static_cast<uint8_t>(value >> 8));
+        bytes.push_back(static_cast<uint8_t>(value));
+    }
+}
+
+static bool write_pcap_fixture(const char* filename, bool little_endian) {
+    std::vector<uint8_t> bytes;
+    if (little_endian) {
+        bytes.insert(bytes.end(), {0xD4, 0xC3, 0xB2, 0xA1});
+    } else {
+        bytes.insert(bytes.end(), {0xA1, 0xB2, 0xC3, 0xD4});
+    }
+    append_u16(bytes, 2, little_endian);
+    append_u16(bytes, 4, little_endian);
+    append_u32(bytes, 0, little_endian);       // thiszone
+    append_u32(bytes, 0, little_endian);       // sigfigs
+    append_u32(bytes, 65535, little_endian);   // snaplen
+    append_u32(bytes, 1, little_endian);       // Ethernet link type
+
+    append_u32(bytes, 0x11223344, little_endian);
+    append_u32(bytes, 0x55667788, little_endian);
+    append_u32(bytes, 4, little_endian);
+    append_u32(bytes, 4, little_endian);
+    bytes.insert(bytes.end(), {0xDE, 0xAD, 0xBE, 0xEF});
+
+    std::ofstream file(filename, std::ios::binary);
+    file.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    return file.good();
+}
+
+bool run_pcap_tests() {
+    std::cout << "\n==== PCAP TESTS ====\n";
+
+    bool passed = true;
+    for (bool little_endian : {true, false}) {
+        const char* filename = little_endian
+            ? "/tmp/deeppacket-little-endian.pcap"
+            : "/tmp/deeppacket-big-endian.pcap";
+
+        passed = write_pcap_fixture(filename, little_endian) && passed;
+
+        dp::pcap::Reader reader(filename);
+        std::vector<dp::pcap::Packet> packets;
+        const bool valid = reader.valid();
+        const bool read = valid && reader.read_all(packets);
+        const bool fields_match = read && packets.size() == 1 &&
+            packets[0].ts_sec == 0x11223344 &&
+            packets[0].ts_usec == 0x55667788 &&
+            packets[0].data == std::vector<uint8_t>({0xDE, 0xAD, 0xBE, 0xEF});
+
+        std::cout << (little_endian ? "Little-endian" : "Big-endian")
+                  << " PCAP: " << (fields_match ? "PASS" : "FAIL") << "\n";
+        passed = fields_match && passed;
+        std::remove(filename);
+    }
+
+    return passed;
+}
+
+
 
 
 int run_capture_test() {
@@ -1104,6 +1199,189 @@ int run_capture_test() {
     return 0;
 }
 
+namespace dp::tests
+{
+
+namespace
+{
+
+// Represents a single test triple (tcp, udp, ipv6) to be processed by the stress test pipeline.
+// Builds a sample triple of packets (IPV4(TCP, UDP) and IPV6) to be used in the stress test.
+std::vector<std::vector<std::uint8_t>> build_packet_corpus()
+{
+    return
+    {
+        tcp_valid,
+        udp_valid,
+        ipv6_valid
+    };
+}
+
+} // anonymous namespace
+
+StressResult run_pipeline_stress_test(const StressConfig& config) {
+    StressResult result;
+    result.packets_generated = config.packet_count;
+
+    if (config.queue_capacity == 0 || (config.queue_capacity & (config.queue_capacity - 1)) != 0) {
+        return result;
+    }
+
+    const auto corpus = build_packet_corpus();
+
+    if (corpus.empty() || config.packet_count == 0) {
+        return result;
+    }
+
+    // Initialize SPSC ring buffer with the specified capacity for stress test items.
+    dp::capture::util::SPSCRingBuffer<StressUnit> queue(config.queue_capacity);
+
+    // Initialize atomic counters and flags for tracking the state of the producer and consumer threads.
+    std::atomic<std::uint64_t> enqueued{0};
+    std::atomic<bool> producer_finished{false};
+    std::atomic<bool> consumer_valid{true};
+    std::atomic<std::uint64_t> validation_failures{0};
+    std::atomic<std::uint64_t> queue_full_events{0};
+
+    // Initialize the error tracking variables.
+    std::exception_ptr thread_error;
+    std::mutex error_mutex;
+
+    const auto start = std::chrono::steady_clock::now();
+
+    // Producer thread: generates and enqueues stress test items into the SPSC ring buffer.
+    std::thread producer([&]
+    {
+        try
+        {
+            for (std::uint64_t sequence = 0; sequence < config.packet_count; ++sequence)
+            {
+                StressUnit item
+                {
+                    sequence,
+                    corpus[sequence % corpus.size()]
+                };
+
+                // while the queue is full, yield the thread and increment the queue_full_events counter
+                while (!queue.push(std::move(item)))
+                {
+                    queue_full_events.fetch_add( 1, std::memory_order_relaxed);
+                    std::this_thread::yield();
+                }
+
+                // Once the item is successfully enqueued, increment the enqueued counter
+                enqueued.fetch_add( 1, std::memory_order_relaxed);
+            }
+        }
+        catch (...) {
+            std::lock_guard lock(error_mutex);
+            thread_error = std::current_exception();
+            consumer_valid.store(false, std::memory_order_release);
+        }
+
+        // Signal that the producer has finished generating and enqueuing items
+        producer_finished.store(true, std::memory_order_release);
+    });
+
+    // Consumer thread: dequeues and processes stress test items from the SPSC ring buffer.
+    std::thread consumer([&]
+    {
+        try
+        {
+            StressUnit item{};
+
+            // Continuously attempt to dequeue and process items until the producer has finished and the queue is empty
+            for (;;)
+            {
+                if (queue.pop(item))
+                {
+                    const auto parsed = dp::parser::parse_packet(std::span<const std::uint8_t>(item.bytes));
+
+                    const dp::validation::PacketValidator validator(parsed.view);
+
+                    if (!validator.errors.empty() && validator.errors.front() != dp::validation::ValidationError::NONE)
+                    {
+                        validation_failures.fetch_add(1, std::memory_order_relaxed);
+                        consumer_valid.store(false, std::memory_order_release);
+                    }
+
+                    result.packets_processed++;
+                    result.bytes_processed += item.bytes.size();
+                    continue;
+                }
+
+                if (producer_finished.load(std::memory_order_acquire) && queue.empty())
+                {
+                    break;
+                }
+
+                std::this_thread::yield();
+            }
+        }
+        catch (...) {
+            std::lock_guard lock(error_mutex);
+            thread_error = std::current_exception();
+            consumer_valid.store(false, std::memory_order_release);
+        }
+    });
+
+    // Synchronize both producers and consumers to ensure they complete their tasks before proceeding to calculate the results.
+    producer.join();
+    consumer.join();
+
+    const auto end = std::chrono::steady_clock::now();
+
+    result.elapsed_seconds = std::chrono::duration<double>(end - start).count();
+
+    result.validation_failures = validation_failures.load(std::memory_order_acquire);
+
+    result.queue_full_events = queue_full_events.load(std::memory_order_acquire);
+
+    result.packets_per_second = result.elapsed_seconds > 0.0
+            ? static_cast<double>(result.packets_processed)
+                / result.elapsed_seconds
+            : 0.0;
+
+    result.bytes_per_second = result.elapsed_seconds > 0.0
+            ? static_cast<double>(result.bytes_processed)
+                / result.elapsed_seconds
+            : 0.0;
+
+    result.packets_enqueued = enqueued.load(std::memory_order_acquire);
+    bool accounting_valid = result.packets_enqueued == result.packets_generated &&
+        result.packets_processed == result.packets_enqueued;
+    {
+        std::lock_guard lock(error_mutex);
+        accounting_valid = accounting_valid && thread_error == nullptr;
+    }
+
+    result.passed = consumer_valid.load(std::memory_order_acquire) && accounting_valid && result.validation_failures == 0;
+
+    if (config.print_metrics)
+    {
+        const double mebibytes_per_second = result.bytes_per_second / (1024.0 * 1024.0);
+
+        std::cout
+            << "\n==== PACKET PIPELINE STRESS TEST ====\n"
+            << "Queue capacity:        " << config.queue_capacity << '\n'
+            << "Packets generated:     " << result.packets_generated << '\n'
+            << "Packets enqueued:      " << result.packets_enqueued << '\n'
+            << "Packets processed:     " << result.packets_processed << '\n'
+            << "Validation failures:   " << result.validation_failures << '\n'
+            << "Queue-full retries:    " << result.queue_full_events << '\n'
+            << "Bytes processed:       " << result.bytes_processed << '\n'
+            << "Elapsed time:          " << std::fixed << std::setprecision(4) << result.elapsed_seconds << " s\n"
+            << "Packet throughput:     " << std::setprecision(2) << result.packets_per_second << " packets/s\n"
+            << "Byte throughput:       " << result.bytes_per_second << " bytes/s (" << std::setprecision(2) << mebibytes_per_second << " MiB/s)\n"
+            << "Result:                " << (result.passed ? "PASS" : "FAIL")
+            << "\n====================================\n";
+    }
+
+    return result;
+}
+
+} // namespace dp::tests
+
 
 
 
@@ -1120,6 +1398,12 @@ int main() {
     run_icmpv4_tests();
     run_icmpv6_tests();
     run_misc_tests();
+    if (!run_pcap_tests()) {
+        return 1;
+    }
+    if (!dp::tests::run_pipeline_stress_test().passed) {
+        return 1;
+    }
 
     //int res = run_capture_test();
     //if(res!=0) {

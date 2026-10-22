@@ -1,5 +1,6 @@
 #include "dp/pcap/pcap_reader.hpp"
 #include <fstream>
+#include <array>
 #include <cstring>
 
 
@@ -28,16 +29,28 @@ struct PcapRecordHeader {
 };
 #pragma pack(pop)
 
-static bool is_valid_magic_number(uint32_t val) {
-    return val == PCAP_MAGIC_NUMBER_BE || val == PCAP_MAGIC_NUMBER_LE; // valid magic numbers for pcap files
+static uint16_t decode_u16(const uint8_t* bytes, bool little_endian) {
+    if (little_endian) {
+        return static_cast<uint16_t>(bytes[0]) |
+               (static_cast<uint16_t>(bytes[1]) << 8);
+    }
+
+    return (static_cast<uint16_t>(bytes[0]) << 8) |
+           static_cast<uint16_t>(bytes[1]);
 }
 
-// Utility function to swap endianness of a 32-bit integer
-static uint32_t swap32(uint32_t val) {
-    return ((val & 0x000000FF) << 24) |
-           ((val & 0x0000FF00) << 8) |
-           ((val & 0x00FF0000) >> 8) |
-           ((val & 0xFF000000) >> 24);
+static uint32_t decode_u32(const uint8_t* bytes, bool little_endian) {
+    if (little_endian) {
+        return static_cast<uint32_t>(bytes[0]) |
+               (static_cast<uint32_t>(bytes[1]) << 8) |
+               (static_cast<uint32_t>(bytes[2]) << 16) |
+               (static_cast<uint32_t>(bytes[3]) << 24);
+    }
+
+    return (static_cast<uint32_t>(bytes[0]) << 24) |
+           (static_cast<uint32_t>(bytes[1]) << 16) |
+           (static_cast<uint32_t>(bytes[2]) << 8) |
+           static_cast<uint32_t>(bytes[3]);
 }
 
 
@@ -49,19 +62,31 @@ Reader::Reader(const std::string& filename) : filename_(filename) {
         return; 
     }
 
-    PcapGlobalHeader global_header{};
-    file.read(reinterpret_cast<char*>(&global_header), sizeof(global_header));
+    std::array<uint8_t, sizeof(PcapGlobalHeader)> global_header{};
+    file.read(reinterpret_cast<char*>(global_header.data()), global_header.size());
 
-    if(!file.good() || !is_valid_magic_number(global_header.magic_number)) {
+    if (!file.good()) {
         ok_ = false; // invalid pcap file
         return;
     }
 
-    // detecting endianness based on the magic number
-    if (global_header.magic_number == PCAP_MAGIC_NUMBER_LE) {
-        is_little_endian_ = true;
-    } else if (global_header.magic_number == PCAP_MAGIC_NUMBER_BE) {
-        is_little_endian_ = false;   // since it is big-endian, we will need to swap bytes when reading headers and packet data
+    const auto magic = global_header.data();
+    if (magic[0] == 0xD4 && magic[1] == 0xC3 &&
+        magic[2] == 0xB2 && magic[3] == 0xA1) {
+        file_little_endian_ = true;
+    } else if (magic[0] == 0xA1 && magic[1] == 0xB2 &&
+               magic[2] == 0xC3 && magic[3] == 0xD4) {
+        file_little_endian_ = false;
+    } else {
+        ok_ = false;
+        return;
+    }
+
+    const uint16_t version_major = decode_u16(magic + 4, file_little_endian_);
+    const uint16_t version_minor = decode_u16(magic + 6, file_little_endian_);
+    if (version_major != 2 || version_minor != 4) {
+        ok_ = false;
+        return;
     }
 
     ok_ = true; // file is valid
@@ -75,37 +100,35 @@ bool Reader::read_all(std::vector<Packet> &out_packets) {
     if(!file.good()) return false; // kinda redundant since i added a check in the constructor, but just in case
 
     // Skip the global header
-    PcapGlobalHeader global_header{};
-    file.read(reinterpret_cast<char*>(&global_header), sizeof(global_header));
+    std::array<uint8_t, sizeof(PcapGlobalHeader)> global_header{};
+    file.read(reinterpret_cast<char*>(global_header.data()), global_header.size());
     if(!file.good()) return false; // error reading global header
+
+    out_packets.clear();
 
     // Read packets until EOF
     while (true) {
         // Read the record header
-        PcapRecordHeader record_header{};
-        file.read(reinterpret_cast<char*>(&record_header), sizeof(record_header));
+        std::array<uint8_t, sizeof(PcapRecordHeader)> record_header{};
+        file.read(reinterpret_cast<char*>(record_header.data()), record_header.size());
         if (!file.good()) break; // EOF
 
-        // Swap bytes if the file is big-endian
-        if (!is_little_endian_) {
-            record_header.ts_sec = swap32(record_header.ts_sec);
-            record_header.ts_usec = swap32(record_header.ts_usec);
-            record_header.incl_len = swap32(record_header.incl_len);
-            record_header.orig_len = swap32(record_header.orig_len);
-        }
+        const uint32_t ts_sec = decode_u32(record_header.data(), file_little_endian_);
+        const uint32_t ts_usec = decode_u32(record_header.data() + 4, file_little_endian_);
+        const uint32_t incl_len = decode_u32(record_header.data() + 8, file_little_endian_);
 
         // Sanity check on packet size
-        if (record_header.incl_len == 0 || record_header.incl_len > 10'000'000) {
+        if (incl_len == 0 || incl_len > 10'000'000) {
             return false; 
         }
 
         // Read the packet data
         Packet myPacket{};
-        myPacket.ts_sec = record_header.ts_sec;
-        myPacket.ts_usec = record_header.ts_usec;
-        myPacket.data.resize(record_header.incl_len);
+        myPacket.ts_sec = ts_sec;
+        myPacket.ts_usec = ts_usec;
+        myPacket.data.resize(incl_len);
 
-        file.read(reinterpret_cast<char*>(myPacket.data.data()), record_header.incl_len);
+        file.read(reinterpret_cast<char*>(myPacket.data.data()), incl_len);
         if (!file.good()) return false;
 
         // Move the packet into the output vector
@@ -117,4 +140,3 @@ bool Reader::read_all(std::vector<Packet> &out_packets) {
 
 
 } // namespace dp::pcap
-
