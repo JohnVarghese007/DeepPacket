@@ -141,3 +141,17 @@ Test#   Expected                                Received                        
 ==== PCAP TESTS ====
 Little-endian PCAP: PASS
 Big-endian PCAP: PASS
+
+==== PACKET PIPELINE STRESS TEST ====
+Queue capacity:        1024
+Packets generated:     1000000
+Packets enqueued:      1000000
+Packets processed:     1000000
+Validation failures:   0
+Queue-full retries:    1856376
+Bytes processed:       55333340
+Elapsed time:          1.0052 s
+Packet throughput:     994788.69 packets/s
+Byte throughput:       55044980.70 bytes/s (52.49 MiB/s)
+Result:                PASS
+====================================

@@ -29,11 +29,11 @@ The engine is compiled into a single static library (`dp_engine`) and linked by:
 
 ### 1. Capture (Live Mode)
 
-> AF_PACKET socket → CaptureController → SPSC Ring Buffer → UI/CLI
+> AF_PACKET socket → capture thread → SPSC Ring Buffer → controller/UI thread → parse/validate → summaries → UI/CLI
 - The capture thread blocks on `recvfrom()`
-- Captured packet data is pushed into a lock‑free SPSC queue
+- Raw captured packet bytes are pushed into a lock‑free SPSC queue
 - The frontend/controller thread polls the queue, then parses, validates, and stores summaries
-- The UI/CLI consumes summaries and reconstructs full packet views on demand
+- The UI/CLI consumes structured summaries and reconstructs full packet views on demand
 
 ### 2. Capture (PCAP Mode)
 
@@ -55,21 +55,29 @@ DeepPacket uses a multithreaded producer–consumer pipeline:
                  │
            recvfrom()
                  │
+        raw packet bytes
                  ▼
-        ┌──────────────────┐
-        │  PacketSummary   │
-        └─────────┬────────┘
-                  │
-                  ▼
         ┌──────────────────┐
         │ SPSC Ring Buffer │
         └─────────┬────────┘
                   │
+        raw packet bytes
                   ▼
    ┌──────────────────────────┐
-   │       UI Thread          │
+   │ Controller / UI Thread   │
    │       (Consumer)         │
    └──────────────────────────┘
+                  │
+          parse + validate
+                  │
+                  ▼
+        ┌──────────────────┐
+        │ Packet Summaries │
+        │ retained bytes   │
+        └─────────┬────────┘
+                  │
+                  ▼
+              GUI / CLI
 
 ```
 
@@ -80,20 +88,22 @@ Responsibilities:
 - Open raw socket
 - Block on `recvfrom()`
 - Capture Ethernet frames
-- Produce `PacketSummary`
-- Push into SPSC ring buffer
+- Push raw packet bytes into the SPSC ring buffer
 
 ### **UI Thread (Consumer)**
 Runs the ImGui event loop or the CLI processing loop.
 
 Responsibilities:
 - Poll the ring buffer
-- Consume summaries
-- Update packet list
-- Parse + validate selected packet
-- Render UI
+- Pop raw packet bytes
+- Parse and validate packets
+- Create and store packet summaries
+- Retain packet bytes when needed for later inspection
+- Render or expose summaries to the UI/CLI
 
-This separation ensures the UI never stalls under heavy traffic.
+This separation prevents the capture thread from being blocked by parsing or
+frontend work. The bounded queue absorbs short-term rate differences, while
+sustained frontend overload can still cause queue saturation and packet drops.
 
 Capture ownership and mode transitions are serialized separately from packet transfer.
 The controller uses lifecycle synchronization when replacing or stopping a capture
