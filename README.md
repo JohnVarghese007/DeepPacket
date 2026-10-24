@@ -150,13 +150,28 @@ The build produces:
 sudo ./build/tests/deeppacket-tests > output.txt
 ```
 
-### 4. Run the UI
+### 4. Sanitizer Builds
+
+Sanitizers are selected when configuring CMake. AddressSanitizer and
+ThreadSanitizer must be run in separate builds:
+
+```bash
+./build.sh ASAN_UBSAN build-asan
+./build-asan/tests/deeppacket-tests
+
+./build.sh TSAN build-tsan
+./build-tsan/tests/deeppacket-tests
+```
+
+Other supported modes are `ASAN`, `UBSAN`, and `OFF` (the default).
+
+### 5. Run the UI
 
 ```bash
 sudo ./build/app/deeppacket
 ```
 
-### 5. Run the CLI
+### 6. Run the CLI
 
 ```bash
 sudo ./build/cli/dpctl
@@ -209,5 +224,7 @@ https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 ## Notes
 
 * DeepPacket is still under active development and may be worked on every now and then.
-* Some UI elements (e.g., filter box) are placeholders for future features.
+* The UI filter box configures the native live-capture BPF filter.
+* Capture filters apply only to live Linux `AF_PACKET` capture, not to
+  already-loaded PCAP summaries.
 * Interface auto-detection is implemented, but fallback defaults to default value of `enp0s3` if unavailable.

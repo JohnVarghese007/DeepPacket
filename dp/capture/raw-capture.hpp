@@ -14,6 +14,7 @@
 #include <vector>
 #include <string>
 #include "dp/capture/spsc_ring_buffer.hpp" 
+#include "dp/capture/bpf.hpp"
 
 
 namespace dp {
@@ -44,7 +45,10 @@ public:
         Packet& operator=(Packet&&) noexcept = default;
     };
 
-    explicit SocketCapture(const std::string& interface_name = "enp0s3");
+    explicit SocketCapture(
+        const std::string& interface_name = "enp0s3",
+        const std::string& filter_expression = ""
+    );
 
     // close the socket if opened
     ~SocketCapture();
@@ -85,8 +89,14 @@ private:
     // Lock-free SPSC Ring Buffer
     dp::capture::util::SPSCRingBuffer<Packet> ring{RING_CAPACITY};
 
+    // BPF filter program to be attached to the socket
+    BPFProgram filter_program;
+
     // Producer thread function
     void capture_loop();
+
+    // BPF filter compilation
+    bool attach_filter(const BPFProgram& program);
 
 };
 

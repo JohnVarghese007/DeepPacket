@@ -58,7 +58,7 @@ public:
     ~CaptureController();
 
     // Start/stop live capture
-    bool start_live_capture(const std::string& interface);
+    bool start_live_capture(const std::string& interface, const std::string& filter_expression = "");
     void stop_capture();
 
     // PCAP import + export

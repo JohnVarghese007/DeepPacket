@@ -56,13 +56,11 @@ CaptureController::~CaptureController()
     stop_capture();
 }
 
-bool CaptureController::start_live_capture(const std::string& interface)
+bool CaptureController::start_live_capture(const std::string& interface, const std::string& filter_expression)
 {
     std::lock_guard<std::mutex> lock(lifecycle_mutex);
-    mode_ = CaptureMode::NONE;
-    capture.reset();
 
-    auto next_capture = std::make_unique<dp::capture::SocketCapture>(interface);
+    auto next_capture = std::make_unique<dp::capture::SocketCapture>(interface, filter_expression);
 
     if (!next_capture->valid()) {
         return false;

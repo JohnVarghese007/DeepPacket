@@ -1,6 +1,9 @@
 #include <iostream>
 #include <vector>
 #include <cstring>
+#include <cerrno>
+#include <sys/time.h>
+#include <sys/ioctl.h>
 #include "dp/capture/raw-capture.hpp"
 //#include "spsc_ring_buffer.hpp"
 
@@ -11,7 +14,7 @@
 
 namespace dp::capture {
 
-SocketCapture::SocketCapture(const std::string& interface_name) {
+SocketCapture::SocketCapture(const std::string& interface_name, const std::string& filter_expression) {
     sock = create_socket();
     if (sock < 0) {
         perror("socket");
@@ -38,6 +41,28 @@ SocketCapture::SocketCapture(const std::string& interface_name) {
         return;
     }
 
+    // attach bpf filter if provided
+    if (!filter_expression.empty()) {
+        BPFCompileResult result = BPFProgram::compile(filter_expression);
+
+        if(!result.success) {
+            std::cerr << "BPF filter compilation failed: " << result.message << std::endl;
+            close(sock);
+            sock = -1;
+            return;
+        }
+
+        filter_program = std::move(result.program);
+
+        if(!attach_filter(filter_program)) {
+            const int error = errno;
+            std::cerr << "BPF filter attachment failed: " << std::strerror(error) << std::endl;
+            close(sock);
+            sock = -1;
+            return;
+        }
+    }
+
     // Start async capture thread
     running = true;
     capture_thread = std::thread(&SocketCapture::capture_loop, this);
@@ -61,7 +86,30 @@ SocketCapture::~SocketCapture() {
 
 // If returned  value < 0, then socket creation failed
 int SocketCapture::create_socket(){
-    return socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));    
+    const int socket_fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+    if (socket_fd < 0) {
+        return socket_fd;
+    }
+
+    const timeval receive_timeout{
+        .tv_sec = 0,
+        .tv_usec = 100000
+    };
+
+    if (setsockopt(
+            socket_fd,
+            SOL_SOCKET,
+            SO_RCVTIMEO,
+            &receive_timeout,
+            sizeof(receive_timeout)
+        ) < 0) {
+        const int error = errno;
+        close(socket_fd);
+        errno = error;
+        return -1;
+    }
+
+    return socket_fd;
 }
 
 // make sure to check if socket has been created before calling this function
@@ -83,6 +131,14 @@ void SocketCapture::capture_loop() {
         ssize_t n = recvfrom(sock, pkt.data.data(), MAX_PACKET_SIZE, 0, nullptr, nullptr);
 
         if (n <= 0) {
+            if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                continue;
+            }
+
+            if (!running) {
+                break;
+            }
+
             stats_errors.fetch_add(1, std::memory_order_relaxed);
             continue;
         }
@@ -156,6 +212,30 @@ std::vector<std::string> SocketCapture::list_interfaces() {
 
     if_freenameindex(all);
     return interfaces;
+}
+
+
+bool SocketCapture::attach_filter(const BPFProgram& program) {
+    if (program.instructions.empty() ||
+        program.instructions.size() > BPF_MAXINSNS) {
+        errno = EINVAL; // Invalid argument
+        return false;
+    }
+
+    sock_fprog filter{};
+    filter.len = static_cast<unsigned short>(
+        program.instructions.size()
+    );
+    filter.filter = const_cast<sock_filter*>(
+        program.instructions.data()
+    );
+
+    return setsockopt(sock,
+        SOL_SOCKET,
+        SO_ATTACH_FILTER,
+        &filter,
+        sizeof(filter)
+    ) == 0;
 }
 
 

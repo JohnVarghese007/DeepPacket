@@ -38,7 +38,7 @@ static void print_info() {
         "Description: Zero-copy packet inspection tool for live capture and PCAP analysis.\n"
         "Commands:\n"
         "  interfaces              List available network interfaces\n"
-        "  live <iface>            Start live capture\n"
+        "  live <iface> [filter]   Start live capture with optional filter\n"
         "  stop                    Stop live capture\n"
         "  read <pcap>             Load and summarize a PCAP file\n"
         "  view <index>            Show detailed packet breakdown\n"
@@ -99,14 +99,41 @@ int main() {
 
 
         if(line.rfind("live ", 0) == 0) {
-            std::string iface = line.substr(5);
+            const std::string live_arguments = line.substr(5);
+            const std::size_t separator =
+                live_arguments.find_first_of(" \t");
+            const std::string iface =
+                separator == std::string::npos
+                    ? live_arguments
+                    : live_arguments.substr(0, separator);
+            const std::size_t filter_start =
+                separator == std::string::npos
+                    ? std::string::npos
+                    : live_arguments.find_first_not_of(" \t", separator);
+            const std::string filter_expression =
+                filter_start == std::string::npos
+                    ? ""
+                    : live_arguments.substr(filter_start);
 
-            if(!DeepPacketEngine.start_live_capture(iface)) {
-                std::cerr << "Failed to start live capture on " << iface << "\n";
+            if (iface.empty()) {
+                std::cerr << "Usage: live <iface> [filter]\n";
                 continue;
             }
 
-            std::cout << "Live capture on " << iface << " (type 'stop' to end)\n";
+            if(!DeepPacketEngine.start_live_capture(iface, filter_expression)) {
+                std::cerr << "Failed to start live capture on " << iface;
+                if (!filter_expression.empty()) {
+                    std::cerr << " with filter '" << filter_expression << "'";
+                }
+                std::cerr << "\n";
+                continue;
+            }
+
+            std::cout << "Live capture on " << iface;
+            if (!filter_expression.empty()) {
+                std::cout << " with filter '" << filter_expression << "'";
+            }
+            std::cout << " (type 'stop' to end)\n";
             live_running = true;
             g_stop = false;
 

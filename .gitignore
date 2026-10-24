@@ -1,5 +1,7 @@
 # Build artifacts
 build/
+build-asan/
+build-tsan/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake

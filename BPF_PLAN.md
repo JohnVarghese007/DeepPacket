@@ -89,6 +89,261 @@ Do not put lexer/parser logic in `raw-capture.cpp`.
 
 ## Compiler stages
 
+## Checkpoint-by-checkpoint workflow
+
+Work through these checkpoints in order. Stop at each checkpoint, compile or
+test what you have, and only then continue to the next stage.
+
+### Checkpoint 0: Align the public API
+
+- [x] Use one naming convention consistently (`BPF...`).
+- [x] Decide whether compilation is exposed as a free function or a static
+      class method.
+- [x] Use the selected static-method API:
+
+  ```cpp
+  static BPFCompileResult BPFProgram::compile(
+      const std::string& expression
+  );
+  ```
+
+- [x] Ensure `bpf.hpp` includes every type it uses, including `<string>`.
+- [x] Keep token, parser, AST, and lexer types out of the public header.
+
+**Checkpoint result:** complete. The public header uses the `BPF...` naming
+convention and exposes one static compile contract while keeping compiler
+implementation types private.
+
+### Checkpoint 1: Define the token model
+
+- [x] Define a private `TokenKind` enum in `bpf.cpp`.
+- [x] Include categories for identifiers, numbers, IPv4-like values,
+      boolean operators, parentheses, and end-of-input.
+- [x] Define a `Token` containing at least `kind` and source `text`.
+- [x] Do not create global token arrays or global counters.
+
+**Checkpoint result:** one filter expression can be represented as a local
+`std::vector<Token>`.
+
+### Checkpoint 2: Implement tokenization
+
+- [x] Implement `tokenize(const std::string&)`.
+- [x] Track the input position with a local variable.
+- [x] Skip whitespace.
+- [x] Scan identifiers.
+- [x] Recognize `and`, `or`, and `not`.
+- [x] Scan decimal numbers.
+- [x] Scan IPv4-like text.
+- [x] Recognize `(` and `)`.
+- [x] Append exactly one `End` token.
+- [x] Reject invalid characters explicitly.
+
+Test token streams for:
+
+```text
+tcp
+tcp and port 443
+(host 192.168.1.10 and tcp)
+```
+
+**Checkpoint result:** tokenization is correct, repeatable, and has no global
+state.
+
+### Checkpoint 3: Define the private AST
+
+- [x] Define predicate kinds: protocol, host, and port.
+- [x] Define expression kinds: predicate, `And`, `Or`, and `Not`.
+- [x] Store protocol and port values in predicates; retain host text in the AST
+      until semantic validation converts it to binary IPv4.
+- [x] Use ownership-safe child nodes such as `std::unique_ptr`.
+- [x] Keep all AST types private to `bpf.cpp`.
+
+**Checkpoint result:** expressions such as `tcp and port 443` can be represented
+as a tree without generating BPF yet.
+
+Host addresses are intentionally stored as source text during AST construction.
+IPv4 syntax, octet ranges, and binary conversion belong to the semantic
+validation checkpoint.
+
+### Checkpoint 4: Implement recursive-descent parsing
+
+- [x] Implement `parse_expression()`.
+- [x] Implement `parse_or_expression()`.
+- [x] Implement `parse_and_expression()`.
+- [x] Implement `parse_unary_expression()`.
+- [x] Implement `parse_primary()`.
+- [x] Implement `parse_predicate()`.
+- [x] Require the `End` token after a complete expression.
+- [x] Require the closing parenthesis for grouped expressions.
+
+Verify precedence:
+
+```text
+parentheses > not > and > or
+```
+
+**Checkpoint result:** valid expressions produce correct AST shapes and invalid
+operator/parenthesis sequences produce explicit errors.
+
+Checkpoint 4 is complete. The parser is implemented privately in
+`dp/capture/bpf.cpp` with precedence ordered as parentheses, `not`, `and`,
+then `or`. Semantic validation and conversion of parser failures into the
+public result type remain part of Checkpoint 5.
+
+### Checkpoint 5: Add semantic validation
+
+- [x] Validate supported protocol names.
+- [x] Validate IPv4 syntax and octet ranges.
+- [x] Convert valid IPv4 addresses to binary form.
+- [x] Validate port syntax and the `0..65535` range.
+- [x] Report missing operands and unexpected trailing tokens.
+- [x] Convert parser failures into `BPFCompileResult`.
+
+**Checkpoint result:** malformed values fail before code generation, with useful
+messages and no success-shaped fallback.
+
+Checkpoint 5 is complete. Semantic validation recursively checks supported
+protocol predicates, IPv4 addresses, and port values; parser and tokenizer
+failures are converted into `BPFCompileResult`. Successful results remain
+instruction-free until Checkpoint 6.
+
+### Checkpoint 6: Generate simple BPF programs
+
+- [x] Define instruction-building helpers privately in `bpf.cpp`.
+- [x] Generate explicit accept and reject paths.
+- [x] Add bounds-safe packet loads.
+- [x] Compile protocol predicates first: `tcp`, `udp`, `icmp`, and `arp`.
+- [x] Keep generated instructions in `BPFProgram`.
+- [x] Check the classic-BPF instruction limit.
+
+**Checkpoint result:** simple valid predicates produce non-empty programs that
+can be inspected without attaching them to a socket.
+
+Checkpoint 6 is complete. Protocol predicates generate bounded classic-BPF
+programs with explicit accept/reject paths, and generated instructions are
+stored in `BPFCompileResult`.
+
+### Checkpoint 7: Generate host and port predicates
+
+- [x] Generate IPv4 host source/destination comparisons.
+- [x] Generate transport source/destination port comparisons.
+- [x] Handle the supported Ethernet/IP paths explicitly.
+- [x] Decide and document the behavior for unsupported packet layouts.
+- [x] Add focused compiler coverage for generated programs; privileged
+      kernel packet-fixture attachment remains environment-dependent.
+
+**Checkpoint result:** `host 192.168.1.10` and `port 443` compile correctly
+without unsafe loads.
+
+Checkpoint 7 implementation notes:
+
+- Host and port generation assumes Ethernet II framing.
+- VLAN-tagged Ethernet frames are not handled yet.
+- Host predicates compare IPv4 source and destination addresses.
+- Port predicates compare TCP/UDP source and destination ports.
+- Port predicates require a standard 20-byte IPv4 header (`IHL == 5`).
+- IPv4 packets with options are rejected because the initial implementation
+  uses fixed transport offsets.
+- Compound expressions remain deferred to Checkpoint 8.
+
+Testing note: focused compiler and packet-fixture tests are intentionally
+deferred to Checkpoint 9, after boolean-expression generation is complete.
+The implementation portion of Checkpoint 7 is complete.
+
+### Checkpoint 8: Generate boolean expressions
+
+- [x] Compile `And` so both operands must pass.
+- [x] Compile `Or` so either operand may pass.
+- [x] Compile `Not` by reversing true/false control flow.
+- [x] Add jump-target patching/backpatching if required.
+- [x] Test nested expressions and precedence.
+
+**Checkpoint result:** complete. Compound expressions produce correct control
+flow, nested expressions preserve precedence, and generated programs remain
+within the instruction limit. Runtime smoke checks passed for `and`, `or`,
+`not`, and nested host/port expressions.
+
+### Checkpoint 9: Add isolated compiler tests
+
+- [x] Test all supported simple predicates.
+- [x] Test `and`, `or`, `not`, and parentheses.
+- [x] Test empty input and unknown keywords.
+- [x] Test malformed IPv4 addresses and ports.
+- [x] Test missing operands and unmatched parentheses.
+- [x] Assert both success/error categories and useful messages.
+- [x] Assert successful programs are non-empty.
+
+**Checkpoint result:** complete. Compiler behavior is verified without
+requiring root privileges or a live network interface. The isolated
+`deeppacket-bpf-tests` target passes all checks.
+
+### Checkpoint 10: Register the module in CMake
+
+- [x] Add `dp/capture/bpf.cpp` to `dp_engine` in the root `CMakeLists.txt`.
+- [x] Reconfigure and build.
+- [x] Run the isolated compiler tests.
+- [x] Confirm no unrelated targets regress.
+
+**Checkpoint result:** complete. The compiler is part of the normal project
+build, the separate `deeppacket-bpf-tests` target links against `dp_engine`,
+and the full build and isolated compiler tests pass.
+
+### Checkpoint 11: Attach filters to `SocketCapture`
+
+- [x] Accept an optional filter expression or compiled program.
+- [x] Create and bind the socket first.
+- [x] Compile/attach the filter before starting the capture thread.
+- [x] Use `SO_ATTACH_FILTER`.
+- [x] Keep the instruction owner alive while `setsockopt()` reads it.
+- [x] Report compile errors separately from `errno` attachment errors.
+- [x] Leave the capture invalid/stopped if setup fails.
+
+**Checkpoint result:** implementation complete and source-verified. Rejected
+packets are excluded before entering the SPSC queue, and failed filter setup
+cannot start capture accidentally. Live kernel attachment remains an
+environment-dependent privileged smoke test and is deferred until the capture
+API is wired through the controller and engine.
+
+### Checkpoint 12: Propagate the API through core and engine
+
+- [x] Extend `CaptureController::start_live_capture`.
+- [x] Extend `DeepPacketEngine::start_live_capture`.
+- [x] Preserve an overload or default for existing no-filter callers.
+- [x] Preserve previous capture state when a replacement fails.
+- [x] Keep UI and CLI independent of socket/BPF implementation details.
+
+**Checkpoint result:** complete. One shared backend API controls filtered live
+capture, existing no-filter callers remain source-compatible, and failed
+replacement setup preserves the existing capture. The full build and isolated
+BPF compiler tests pass.
+
+### Checkpoint 13: Wire the CLI and UI
+
+- [x] Accept a filter expression in the CLI live-capture command.
+- [x] Preserve expressions containing spaces.
+- [x] Report compile and attachment errors clearly.
+- [x] Connect the existing UI filter box to the engine API.
+- [x] Show active-filter state and clear/apply behavior.
+- [x] Do not imply that the first version is a display filter.
+
+**Checkpoint result:** complete. Both frontends use the same live-capture
+filter path, and the user-facing documentation describes it as a capture
+filter rather than a display filter.
+
+### Checkpoint 14: Document and release-check
+
+- [x] Document supported syntax and limitations.
+- [x] State that this is a native DeepPacket subset, not full Wireshark syntax.
+- [x] Document that filtering applies to live AF_PACKET capture only.
+- [x] Update architecture documentation if the capture flow changes.
+- [x] Run build and focused tests.
+- [x] Review the final diff for unrelated changes.
+
+**Checkpoint result:** complete. The native BPF filter compiler is documented,
+integrated into the engine, exposed through the CLI and UI, and verified by
+the full build and isolated compiler tests. Live kernel attachment remains an
+environment-dependent privileged smoke test.
+
 ### 1. Define the grammar
 
 Use this grammar:

@@ -25,8 +25,8 @@ namespace dp {
 DeepPacketEngine::DeepPacketEngine() = default;
 DeepPacketEngine::~DeepPacketEngine() = default;
 
-bool DeepPacketEngine::start_live_capture(const std::string& interface) {
-    return controller_.start_live_capture(interface);
+bool DeepPacketEngine::start_live_capture(const std::string& interface, const std::string& filter_expression) {
+    return controller_.start_live_capture(interface, filter_expression);
 }
 
 bool DeepPacketEngine::start_pcap_ingest(const std::string& filename) {
