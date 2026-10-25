@@ -731,6 +731,14 @@ void run_tcp_tests() {
     fix_ipv4_checksum(too_small);
     tests.push_back({too_small, dp::validation::ValidationError::TOO_SMALL_FOR_TCP});
 
+    // Regression test to ensure tcp data offset is validated before access
+    // TCP data_offset is at byte 12, but the complete TCP header is still absent.
+    std::vector<uint8_t> data_offset_boundary = valid_packet;
+    data_offset_boundary.resize(tcp_offset + 12);
+    fix_ipv4_total_length(data_offset_boundary);
+    fix_ipv4_checksum(data_offset_boundary);
+    tests.push_back({data_offset_boundary, dp::validation::ValidationError::TOO_SMALL_FOR_TCP});
+    
     // invalid tcp data offset (should ideally be  >= 5)
     std::vector<uint8_t> invalid_offset = valid_packet;
     invalid_offset[tcp_offset + 12] = (4 << 4); // (4 words or 16 bytes)

@@ -3,6 +3,7 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <cstddef>
 #include <arpa/inet.h>
 
 
@@ -192,6 +193,12 @@ void PacketView::parse_layers() {
             tcp_layer = layers::TCPLayer(data + l4_offset);
             has_tcp = true;
 
+            // ensure data_offset exists before trying to access it
+            if (length < l4_offset + offsetof(TCPHeader, data_offset) + 1) {
+                payload = nullptr;
+                payload_len = 0;
+                return;
+            }
             size_t tcp_header_len = ((tcp_layer.tcph->data_offset >> 4) & 0x0F) * 4;
 
             if (tcp_header_len < MINIMUM_TCP_HEADER_SIZE || l4_offset + tcp_header_len > length) {

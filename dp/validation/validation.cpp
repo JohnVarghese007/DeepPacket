@@ -801,6 +801,12 @@ bool PacketValidator::validate_icmpv4(const PacketView& view, ValidationError& e
     uint16_t total_len = ntohs(view.ipv4_layer.iph->total_length);
     size_t icmp_len = total_len - ip_header_len;
 
+    // Check that ICMP length is at least the size of the ICMP header
+    if (icmp_len < icmp_header_len) {
+        error = ValidationError::TOO_SMALL_FOR_ICMPV4;
+        return false;
+    }
+
     // Error-type ICMP messages must contain embedded IPv4 header + 8 bytes
     if (icmp->type == 3 || icmp->type == 5 || icmp->type == 12) {
         size_t payload_len = icmp_len - icmp_header_len;
@@ -953,28 +959,6 @@ bool PacketValidator::validate_icmpv6(const PacketView& view, ValidationError& e
             break;
             
         }
-    // RFC 4443: ICMPv6 error messages MUST NOT be sent in response to ICMPv6 error messages
-    if (icmp->type <= 4) { // this is an ICMPv6 error message
-        const uint8_t* inner_ptr = view.data + icmp_offset + icmp_header_len;
-        const IPv6Header* inner_ip6 = reinterpret_cast<const IPv6Header*>(inner_ptr);
-
-        // Check if embedded packet is also ICMPv6
-        uint8_t inner_next_header = inner_ip6->next_header;
-
-        if (inner_next_header == 58) { // ICMPv6
-            const ICMPv6Header* inner_icmp =
-            reinterpret_cast<const ICMPv6Header*>(inner_ptr + sizeof(IPv6Header));
-
-            // If inner ICMPv6 is also an error (type 0–4), this is invalid
-            if (inner_icmp->type <= 4) {
-                error = ValidationError::ICMPV6_ERROR_MESSAGE_INVALID;
-                return false;
-            
-            }
-        }
-    }
-
-
     // Compute ICMPv6 length from actual captured bytes
     // uint16_t payload_len = ntohs(view.ipv6_layer.iph->payload_length);
     size_t icmp_len = view.size() - icmp_offset; // captured payload size
@@ -985,18 +969,20 @@ bool PacketValidator::validate_icmpv6(const PacketView& view, ValidationError& e
         return false;
     }
 
-    // Error messages must include embedded IPv6 header + 8 bytes
-    if (icmp->type <= 4) { // error messages
-        size_t payload_after_header = icmp_len - icmp_header_len;
+    // Error messages must include an embedded IPv6 header.
+    if (icmp->type <= 4) {
+        const size_t payload_after_header = icmp_len - icmp_header_len;
 
-        if (payload_after_header < 40) { // At least initial 40 bytes of IPv6 header 
+        if (payload_after_header < sizeof(IPv6Header)) {
             error = ValidationError::ICMPV6_TRUNCATED_PAYLOAD;
             return false;
         }
 
-        // Validate embedded IPv6 header (structural only)
-        const uint8_t* inner_ptr = view.data + icmp_offset + icmp_header_len;
-        const IPv6Header* inner = reinterpret_cast<const IPv6Header*>(inner_ptr);
+        // Validate the embedded IPv6 header.
+        const uint8_t* inner_ptr =
+            view.data + icmp_offset + icmp_header_len;
+        const IPv6Header* inner =
+            reinterpret_cast<const IPv6Header*>(inner_ptr);
 
         uint32_t inner_vtcfl = ntohl(inner->ver_tc_fl);
         uint8_t inner_version = (inner_vtcfl >> 28) & 0x0F;
@@ -1004,6 +990,26 @@ bool PacketValidator::validate_icmpv6(const PacketView& view, ValidationError& e
         if (inner_version != 6) {
             error = ValidationError::ICMPV6_EMBEDDED_IPV6_INVALID;
             return false;
+        }
+
+        // Only inspect an embedded ICMPv6 header when the embedded IPv6
+        // packet declares ICMPv6 as its next header.
+        if (inner->next_header == 58) {
+            if (payload_after_header <
+                sizeof(IPv6Header) + sizeof(std::uint8_t)) {
+                error = ValidationError::ICMPV6_TRUNCATED_PAYLOAD;
+                return false;
+            }
+
+            const ICMPv6Header* inner_icmp =
+                reinterpret_cast<const ICMPv6Header*>(
+                    inner_ptr + sizeof(IPv6Header));
+
+            // An ICMPv6 error must not contain another ICMPv6 error.
+            if (inner_icmp->type <= 4) {
+                error = ValidationError::ICMPV6_ERROR_MESSAGE_INVALID;
+                return false;
+            }
         }
     }
 
