@@ -30,7 +30,8 @@ The engine is compiled into a single static library (`dp_engine`) and linked by:
 ### 1. Capture (Live Mode)
 
 > AF_PACKET socket → capture thread → SPSC Ring Buffer → controller/UI thread → parse/validate → summaries → UI/CLI
-- The capture thread blocks on `recvfrom()`
+- The capture thread waits on `recvfrom()` with a short timeout so shutdown
+  can observe the stop flag promptly
 - Raw captured packet bytes are pushed into a lock‑free SPSC queue
 - The frontend/controller thread polls the queue, then parses, validates, and stores summaries
 - The UI/CLI consumes structured summaries and reconstructs full packet views on demand

@@ -53,6 +53,38 @@ All modules under dp/ share a consistent namespace (dp::<module>) and are design
 * Live packet capture using Linux raw sockets
 * PCAP file ingestion + export
 
+### cBPF filtering for Live Capture
+
+
+DeepPacket includes a native classic-BPF with a very minimal language for live packet filtering during live-capture.
+
+Supported predicates:
+
+* `tcp`
+* `udp`
+* `icmp`
+* `arp`
+* `host <IPv4 address>`
+* `port <number>`
+
+> Does not support IPv6 as of yet, by default these filters assume IPv4 but this is mostly a proof of concept for working filter.
+
+Supported operators:
+
+* `and`
+* `or`
+* `not`
+* Parentheses `(` or `)` for grouping
+
+Examples:
+
+```bash
+tcp and port 443
+host 192.168.1.10 and tcp
+(tcp or udp) and port 53
+not arp
+```
+
 ### Protocol Support
 
 Zero-copy parsing + validation for:
@@ -74,12 +106,13 @@ Zero-copy parsing + validation for:
 * Interface selection
 * Live capture
 * PCAP import/export integration
-* Filter box (UI only, not implemented yet)
+* Filter box with BPF filter for live capture(WIP, but works for IPv4)
 
 ### CLI (dpctl)
 
 * Non‑blocking REPL for live capture and PCAP analysis
 * Real‑time packet output stream
+* Optional BPF filter (limited) for live-capture.
 
 ### Validation
 
@@ -136,27 +169,63 @@ From the project root:
 ./build.sh
 ```
 
+This creates the `build/` directory and builds the normal, unsanitized configuration.
+
+The build script accepts:
+
+```bash
+./build.sh <sanitizer> <build-directory>
+```
+
+Ideally, use separate build directories for normal and sanitizer builds.
+
 ### 2. Executables
 
-The build produces:
+The build produces four executable targets:
 
-* `deeppacket-tests` — test suite
+* `deeppacket-tests` — general parser, validator, PCAP and pipeline test suite
+* `deeppacket-bpf-tests` — compiler test suite for BPF filter language.
 * `deeppacket` — graphical packet analyzer
 * `dpctl` — command-line packet analyzer
 
+The `dp_engine` static library is the shared core library linked by the GUI, CLI and test executables.
+
 ### 3. Run Tests
 
+Run the general test suite
+
 ```bash
-sudo ./build/tests/deeppacket-tests > output.txt
+./build/tests/deeppacket-tests > output.txt
 ```
 
-### 4. Run the UI
+Run the focused BPF compiler test suite
+
+```bash
+./build/tests/deeppacket-bpf-tests 
+```
+
+### 4. Sanitizer Builds
+
+DeepPacket supports selectable sanitizer configurations through CMake.
+Sanitizers are built separately because ThreadSanitizer cannot be combined with AddressSanitizer in the same executable.
+
+```bash
+./build.sh ASAN_UBSAN build-asan
+./build-asan/tests/deeppacket-tests
+
+./build.sh TSAN build-tsan
+./build-tsan/tests/deeppacket-tests
+```
+
+Other supported modes are `ASAN`, `UBSAN`, and `OFF` (the default).
+
+### 5. Run the UI
 
 ```bash
 sudo ./build/app/deeppacket
 ```
 
-### 5. Run the CLI
+### 6. Run the CLI
 
 ```bash
 sudo ./build/cli/dpctl
@@ -209,5 +278,7 @@ https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 ## Notes
 
 * DeepPacket is still under active development and may be worked on every now and then.
-* Some UI elements (e.g., filter box) are placeholders for future features.
+* The timestamps for live-capture are wrong, I never bothered to correct it.
+* Capture filters apply only to live Linux `AF_PACKET` capture, not to
+  already-loaded PCAP summaries.
 * Interface auto-detection is implemented, but fallback defaults to default value of `enp0s3` if unavailable.

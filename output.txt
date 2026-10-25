@@ -75,9 +75,10 @@ Test#   Expected                                Received                        
 1       No Errors Found during validation       No Errors Found during validation       PASS
 2       TCP: Missing header                     TCP: Missing header                     PASS
 3       TCP: Too small                          TCP: Too small                          PASS
-4       TCP: Invalid data offset                TCP: Invalid data offset                PASS
-5       TCP: Header exceeds packet              TCP: Header exceeds packet              PASS
-6       TCP: Invalid checksum                   TCP: Invalid checksum                   PASS
+4       TCP: Too small                          TCP: Too small                          PASS
+5       TCP: Invalid data offset                TCP: Invalid data offset                PASS
+6       TCP: Header exceeds packet              TCP: Header exceeds packet              PASS
+7       TCP: Invalid checksum                   TCP: Invalid checksum                   PASS
 
 =======================
 
@@ -148,10 +149,10 @@ Packets generated:     1000000
 Packets enqueued:      1000000
 Packets processed:     1000000
 Validation failures:   0
-Queue-full retries:    1856376
-Bytes processed:       55333340
-Elapsed time:          1.0052 s
-Packet throughput:     994788.69 packets/s
-Byte throughput:       55044980.70 bytes/s (52.49 MiB/s)
+Queue-full retries:    1790366
+Bytes processed:       54000004
+Elapsed time:          0.9423 s
+Packet throughput:     1061250.83 packets/s
+Byte throughput:       57307548.84 bytes/s (54.65 MiB/s)
 Result:                PASS
 ====================================

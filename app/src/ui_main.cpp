@@ -195,7 +195,11 @@ void DrawControlBar() {
     // Filter input
     static char filterBuf[128] = "";
     ImGui::SetNextItemWidth(250);
-    ImGui::InputTextWithHint("##filter", "ip.addr == 192.168.0.1", filterBuf, sizeof(filterBuf));
+    ImGui::InputTextWithHint("##filter", "tcp and port 443", filterBuf, sizeof(filterBuf));
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Clear")) {
+        filterBuf[0] = '\0';
+    }
 
     // Protocol dropdown
     ImGui::SameLine(0, 20);
@@ -280,7 +284,13 @@ void DrawControlBar() {
                         ? interfaceOptions[selectedInterfaceIndex]
                         : "enp0s3";
 
-                capturing = DeepPacketEngine.start_live_capture(selected_interface);
+                capturing = DeepPacketEngine.start_live_capture(
+                    selected_interface,
+                    filterBuf
+                );
+                if (!capturing) {
+                    ImGui::OpenPopup("Capture Error");
+                }
             }
         } else {
             if (ImGui::Button("Stop", ImVec2(120, 0))) {
@@ -289,10 +299,30 @@ void DrawControlBar() {
             }
             ImGui::SameLine();
             ImGui::TextColored(ImVec4(0, 1, 0, 1), "LIVE");
+            ImGui::SameLine();
+            ImGui::Text(
+                "Filter: %s",
+                filterBuf[0] == '\0' ? "none" : filterBuf
+            );
         }
     }
 
     ImGui::EndChild();
+
+    if (ImGui::BeginPopupModal(
+            "Capture Error",
+            nullptr,
+            ImGuiWindowFlags_AlwaysAutoResize
+        )) {
+        ImGui::TextWrapped(
+            "Live capture could not start. Check the interface, filter "
+            "syntax, and capture permissions."
+        );
+        if (ImGui::Button("OK")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
 }
 
 
@@ -970,5 +1000,3 @@ static void glfw_error_callback(int error, const char* description)
 {
     fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
-
-

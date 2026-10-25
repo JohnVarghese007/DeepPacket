@@ -19,7 +19,7 @@ public:
 
     // Start/stop live capture on a given interface 
     // (linux only for now, can be extended by modifying the parser module to support windows/mac)
-    bool start_live_capture(const std::string& interface);
+    bool start_live_capture(const std::string& interface, const std::string& filter_expression = "");
     void stop_capture();
 
     // PCAP import + export
