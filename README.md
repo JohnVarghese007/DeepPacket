@@ -278,7 +278,7 @@ https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 ## Notes
 
 * DeepPacket is still under active development and may be worked on every now and then.
-* The UI filter box configures the native live-capture BPF filter.
+* The timestamps for live-capture are wrong, I never bothered to correct it.
 * Capture filters apply only to live Linux `AF_PACKET` capture, not to
   already-loaded PCAP summaries.
 * Interface auto-detection is implemented, but fallback defaults to default value of `enp0s3` if unavailable.
